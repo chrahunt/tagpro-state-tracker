@@ -1,0 +1,25 @@
+{
+  "name": "tagpro-powerup-tracker",
+  "version": "0.1.0",
+  "description": "Test",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Chris Hunt <",
+  "license": "MIT",
+  "devDependencies": {
+    "browserify": "^10.2.4",
+    "gulp": "^3.9.0",
+    "gulp-concat": "^2.6.0",
+    "gulp-derequire": "^2.1.0",
+    "gulp-rename": "^1.2.2",
+    "gulp-streamify": "^1.0.0",
+    "gulp-template": "^3.0.0",
+    "gulp-util": "^3.0.5",
+    "lodash.assign": "^3.2.0",
+    "streamqueue": "^1.1.1",
+    "vinyl-source-stream": "^1.1.0",
+    "watchify": "^3.2.2"
+  }
+}
