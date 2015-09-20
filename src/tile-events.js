@@ -16,15 +16,18 @@ var tileStrings = {
 var tileTypes = {
   powerup: {
     active: [6.1, 6.2, 6.3, 6.4],
-    inactive: [6]
+    inactive: [6],
+    id: [6]
   },
   bomb: {
     active: [10],
-    inactive: [10.1]
+    inactive: [10.1],
+    id: [10]
   },
   boost: {
     active: [5, 14, 15],
-    inactive: [5.1, 14.1, 15.1]
+    inactive: [5.1, 14.1, 15.1],
+    id: [5, 14, 15]
   }
 };
 
@@ -34,12 +37,13 @@ var tileTypes = {
 // events put out are like n.enter, n.leave, n.update where n is floor of tile id you're interested in
 // callback gets tile vec with x, y, and boolean for active
 // default listens for boost, bomb, powerup.
-function TileEvents() {
+// Takes string type of tile to listen for.
+function TileEvents(tile) {
   EventEmitter.apply(this, arguments);
+  this.tile = tileTypes[tile];
   var self = this;
-  // Types to listen for.
+  // Locations to listen for.
   this.tiles = [];
-  this.listeners = {};
   this.in_view = [];
   this.checkInterval = 250;
   this.interval = setInterval(this._interval.bind(this), this.checkInterval);
@@ -49,24 +53,25 @@ function TileEvents() {
   };
   tagpro.map.forEach(function (row, x) {
     row.forEach(function (v, y) {
-      if (Math.floor(v) === 6) {
+      if (self.isType(v)) {
         self.tiles.push(new Vec2(x, y));
       }
     });
   });
-  // only do pups now
+
+  // Listen for mapupdate.
   tagpro.socket.on('mapupdate', function (updates) {
     if (!Array.isArray(updates)) {
       updates = [updates];
     }
     updates.forEach(function (event) {
-      if (Math.floor(event.v) === 6) {
+      if (self.isType(event.v)) {
         var e = {
           location: new Vec2(event.x, event.y),
-          state: event.v !== 6,
+          state: self.isActive(event.v),
           time: Date.now()
         };
-        self.emit("powerup.update", e);
+        self.emit("tile.update", e);
       }
     });
   });
@@ -74,6 +79,20 @@ function TileEvents() {
 
 util.inherits(TileEvents, EventEmitter);
 module.exports = TileEvents;
+
+TileEvents.prototype.getInView = function() {
+  return this.in_view.slice();
+};
+
+// @private
+TileEvents.prototype.isType = function(v) {
+  return this.tile.id.indexOf(Math.floor(v)) !== -1;
+};
+
+// @private
+TileEvents.prototype.isActive = function(v) {
+  return this.tile.active.indexOf(v) !== -1;
+};
 
 // Get player location.
 // @private
@@ -90,6 +109,7 @@ TileEvents.prototype._interval = function() {
   var leave = [];
   var self = this;
   var time = Date.now();
+
   this.tiles.forEach(function (tile) {
     var diff = tile.mulc(TILE_WIDTH, true).sub(location).abs();
     var in_view = (diff.x < this.range.x && diff.y < this.range.y);
@@ -97,7 +117,7 @@ TileEvents.prototype._interval = function() {
     var already_in_view = self.in_view.indexOf(id) !== -1;
     if (in_view && !already_in_view) {
       self.in_view.push(id);
-      enter.push(tile.clone());
+      enter.push(tile);
     } else if (!in_view && already_in_view) {
       leave.push(tile);
       var i = self.in_view.indexOf(id);
@@ -106,17 +126,17 @@ TileEvents.prototype._interval = function() {
   }, this);
   enter.forEach(function (tile) {
     var val = tagpro.map[tile.x][tile.y];
-    self.emit("powerup.enter", {
-      location: tile,
-      state: val !== 6,
+    self.emit("tile.enter", {
+      location: tile.clone(),
+      state: self.isActive(val),
       time: time
     });
   });
   leave.forEach(function (tile) {
     var val = tagpro.map[tile.x][tile.y];
-    self.emit("powerup.leave", {
-      location: tile,
-      state: val !== 6,
+    self.emit("tile.leave", {
+      location: tile.clone(),
+      state: self.isActive(val),
       time: time
     });
   });

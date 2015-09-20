@@ -24,8 +24,14 @@ function clone(obj) {
 module.exports = Solver;
 
 /**
- * Solver solves boolean dynamic state.
- * @param {Array<string>} variables - array of variable names.
+ * @typedef {object} Variable
+ * @property {string} name - The name of the variable.
+ * @property {boolean} state - The initial state of the variable.
+ */
+/**
+ * Solver solves boolean dynamic state. Must have known initial states, even
+ * with unknown taken times.
+ * @param {Array<Variable>} variables - array of variable names.
  */
 function Solver(variables) {
   this.variables = {};
@@ -36,13 +42,14 @@ function Solver(variables) {
   var self = this;
   // TODO: Handle unknown or variable start.
   variables.forEach(function (variable) {
-    self.variables[variable] = {
+    var name = variable.name;
+    self.variables[name] = {
       observed: false
     };
-    state[variable] = {
+    state[name] = {
       state: true,
       intervals: [{
-        state: true,
+        state: variable.state,
         start: time,
         observed: false,
         end: null
@@ -78,6 +85,39 @@ Solver.prototype.addHypothesis = function(h) {
   this.states = states;
 };
 
+// Returns multiple states or null if invalid
+Solver.prototype.applyHypothesis = function(state, hypothesis) {
+  hypothesis = clone(hypothesis);
+  var states = [];
+  for (var name in state) {
+    // Skip observed variables, no guessing with them.
+    if (this.variables[name].observed)
+      continue;
+    var newState = clone(state);
+    var variable = newState[name];
+    // Hypothesis is always false.
+    if (variable.state) {
+      // Change in observed variable true -> false
+      variable.state = hypothesis.state;
+      variable.intervals.push({
+        state: variable.state,
+        start: hypothesis.time,
+        end: hypothesis.time + STATE_CHANGE
+      });
+    } else {
+      newState = null;
+    }
+    if (newState !== null) {
+      states.push(newState);
+    }
+  }
+  if (states.length === 0) {
+    return null;
+  } else {
+    return states;
+  }
+};
+
 // Observation has time, state, variable.
 Solver.prototype.addObservation = function(o) {
   this.updateVariables();
@@ -90,10 +130,61 @@ Solver.prototype.addObservation = function(o) {
   this.states = states;
 };
 
+// Return state with observation applied or null if invalid.
+Solver.prototype.applyObservation = function(state, observation) {
+  var variable = state[observation.variable];
+  if (variable.state && !observation.state) {
+    // Change in observed variable true -> false
+    variable.state = observation.state;
+    variable.intervals.push({
+      state: variable.state,
+      start: observation.time,
+      end: observation.time + STATE_CHANGE
+    });
+    return state;
+  } else if (variable.state && observation.state) {
+    // Expected state.
+    return state;
+  } else if (!variable.state && observation.state) {
+    // Potentially updating variable.
+    var time = variable.intervals[variable.intervals.length - 1];
+    if (eq(time, observation.time)) {
+      // update state.
+      variable.state = observation.state;
+      variable.intervals.push({
+        state: observation.state,
+        start: observation.time,
+        end: null
+      });
+      return state;
+    } else {
+      // Could not update this variable.
+      return null;
+    }
+  } else if (!variable.state && !observation.state) {
+    // Expected state.
+    return state;
+  }
+};
+
 // Get set of possible states.
 Solver.prototype.getStates = function() {
   this.updateVariables();
   return this.states.slice();
+};
+
+// Like an observation except probably more powerful.
+Solver.prototype.addAssertion = function(o) {
+  this.updateVariables();
+  var self = this;
+  this.states = this.states.filter(function (state) {
+    return self.checkAssertion(state, o);
+  });
+};
+
+Solver.prototype.checkAssertion = function(state, assertion) {
+  var variable = state[assertion.variable];
+  return variable.state === assertion.state;
 };
 
 // Get consolidated state.
@@ -173,89 +264,5 @@ Solver.prototype.updateVariables = function() {
         }
       }
     }
-  }
-};
-
-// Like an observation except probably more powerful.
-Solver.prototype.addAssertion = function(o) {
-  this.updateVariables();
-  var self = this;
-  this.states = this.states.filter(function (state) {
-    return self.checkAssertion(state, o);
-  });
-};
-
-Solver.prototype.checkAssertion = function(state, assertion) {
-  var variable = state[assertion.variable];
-  return variable.state === assertion.state;
-};
-
-// Return state with observation applied or null if invalid.
-Solver.prototype.applyObservation = function(state, observation) {
-  var variable = state[observation.variable];
-  if (variable.state && !observation.state) {
-    // Change in observed variable true -> false
-    variable.state = observation.state;
-    variable.intervals.push({
-      state: variable.state,
-      start: observation.time,
-      end: observation.time + STATE_CHANGE
-    });
-    return state;
-  } else if (variable.state && observation.state) {
-    // Expected state.
-    return state;
-  } else if (!variable.state && observation.state) {
-    // Potentially updating variable.
-    var time = variable.intervals[variable.intervals.length - 1];
-    if (eq(time, observation.time)) {
-      // update state.
-      variable.state = observation.state;
-      variable.intervals.push({
-        state: observation.state,
-        start: observation.time,
-        end: null
-      });
-      return state;
-    } else {
-      // Could not update this variable.
-      return null;
-    }
-  } else if (!variable.state && !observation.state) {
-    // Expected state.
-    return state;
-  }
-};
-
-// Returns multiple states or null if invalid
-Solver.prototype.applyHypothesis = function(state, hypothesis) {
-  hypothesis = clone(hypothesis);
-  var states = [];
-  for (var name in state) {
-    // Skip observed variables, no guessing with them.
-    if (this.variables[name].observed)
-      continue;
-    var newState = clone(state);
-    var variable = newState[name];
-    // Hypothesis is always false.
-    if (variable.state) {
-      // Change in observed variable true -> false
-      variable.state = hypothesis.state;
-      variable.intervals.push({
-        state: variable.state,
-        start: hypothesis.time,
-        end: hypothesis.time + STATE_CHANGE
-      });
-    } else {
-      newState = null;
-    }
-    if (newState !== null) {
-      states.push(newState);
-    }
-  }
-  if (states.length === 0) {
-    return null;
-  } else {
-    return states;
   }
 };

@@ -118,9 +118,8 @@ solver.addHypothesis({
 });
 
 solver._time = t + 1;
-solver.addObservation({
+solver.addAssertion({
   variable: p_2,
-  time: t + 1,
   state: false
 });
 
@@ -132,3 +131,6 @@ if (result[p_1].state &&
 } else {
   console.log("FAIL: Test 6.");
 }
+
+// Non-true start.
+solver = new Solver([p_1, p_2, p_3]);

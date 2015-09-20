@@ -14,6 +14,22 @@ var TagPro = (function () {
     }, 0);
   }
 
+  function onValue(object, property, callback) {
+    Object.defineProperty(object, property, {
+      enumerable: true,
+      configurable: true,
+      get: function () { return; },
+      set: function (v) {
+        Object.defineProperty(object, property, {
+          enumerable: true,
+          configurable: true,
+          value: v
+        });
+        callback(v);
+      }
+    });
+  }
+
   function findIndex(arr, fn) {
     for (var i = 0; i < arr.length; i++) {
       if (fn(arr[i])) {
@@ -23,18 +39,14 @@ var TagPro = (function () {
     return -1;
   }
 
-  function onTagPro(fn, notFirst) {
+  function onTagPro(fn) {
     if (typeof tagpro !== 'undefined') {
-      if (!notFirst) {
-        // Force to be async.
-        setImmediate(fn);
-      } else {
-        fn();
-      }
+      // Force to be async.
+      setImmediate(fn);
     } else {
-      setTimeout(function () {
-        onTagPro(fn, true);
-      }, 20);
+      onValue(window, "tagpro", function (tagpro) {
+        fn();
+      });
     }
   }
 
@@ -127,7 +139,6 @@ var TagPro = (function () {
 
     setImmediate(function () {
       tagpro.ready(function () {
-        console.log("READY@@@@@@@@@@@@@@@@@@@@@@@@@@@@@");
         self.emit('tagpro.ready');
       });
     });

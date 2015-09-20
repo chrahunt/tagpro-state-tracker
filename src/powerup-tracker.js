@@ -15,7 +15,6 @@ function PowerupTracker() {
     updates.forEach(function (update) {
       if (update['s-powerups']) {
         var id = update.id;
-        console.log("GOT ONE@@@@@@@@");
         if (tagpro.players[id].draw) {
           // Player is visible, get powerup tile and send observation.
           var position = new Vec2(tagpro.players[id].x, tagpro.players[id].y);
@@ -47,10 +46,9 @@ function PowerupTracker() {
     });
   });
 
-  this.tile_events = new TileEvents();
-  this.tile_events.on("powerup.enter", function (info) {
-    console.log("started viewing powerup %o", info);
-    self.solver.setObserved(self.tile_events.in_view);
+  this.tile_events = new TileEvents("powerup");
+  this.tile_events.on("tile.enter", function (info) {
+    self.solver.setObserved(self.tile_events.getInView());
     // Delay and assert fact to rule out states.
     setTimeout(function () {
       self.solver.addAssertion({
@@ -58,30 +56,21 @@ function PowerupTracker() {
         state: info.state
       });
     }, 20);
-    /*self.solver.addObservation({
-      variable: info.location.toString(),
-      state: info.state,
-      time: info.time
-    });*/
   });
-  this.tile_events.on("powerup.leave", function (info) {
-    console.log("stopped viewing powerup");
-    // TODO: Need to do anything here?
-    self.solver.setObserved(self.tile_events.in_view);
+
+  this.tile_events.on("tile.leave", function (info) {
+    self.solver.setObserved(self.tile_events.getInView());
   });
-  this.tile_events.on("powerup.update", function (info) {
+
+  this.tile_events.on("tile.update", function (info) {
     setTimeout(function () {
       self.solver.addAssertion({
         variable: info.location.toString(),
         state: info.state
       });
     }, 20);
-    /*self.solver.addObservation({
-      variable: info.location.toString(),
-      state: info.state,
-      time: info.time
-    });*/
   });
+
   this.powerups = [];
   this.powerup_locations = [];
   tagpro.map.forEach(function (row, x) {
@@ -104,7 +93,7 @@ module.exports = PowerupTracker;
 
 PowerupTracker.prototype.getPowerups = function() {
   var state = this.solver.getState();
-  var in_view = this.tile_events.in_view;
+  var in_view = this.tile_events.getInView();
   var powerups = [];
   for (var variable in state) {
     powerups.push({
