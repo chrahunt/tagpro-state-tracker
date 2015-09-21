@@ -1,19 +1,36 @@
-// tagpro startup helpers.
+var EventEmitter = require('events').EventEmitter;
+var util = require('util');
+
 /**
- * EventEmitter interface.
+ * Makes checking states easier. If module is not loaded synchronously you may miss out on states.
  * Events:
- * - ready: tagpro.ready
- * - start: tagpro object exists
- * - spectating: joined as spectator
- * - join: joined game as player, or from spectator mode.
+ * * tagpro.exists: tagpro object exists, synchronous with tagpro
+ *     variable creation.
+ * * tagpro.beforeready: assets loaded, set before any other tagpro ready.
+ * * same as tagpro.ready in external script with guard against tagpro not
+ *     existing.
+ * * tagpro.initialized: called immediately after socket is 
+ * * user.spectating: User is spectating.
+ * * user.playing: joined game as player, or from spectator mode.
+ * * socket: invoked synchronously with socket creation in the ideal case, never miss a message!
+ * * group: when group is set.
+ * * *: any state change.
+ *
+ * general ordering is:
+ * tagpro.exists -> tagpro.beforeready -> group -> socket -> tagpro.ready -> user.*
+ *
+ * guaranteed ordering is:
+ * tagpro.exists -> group -> socket -> user.*
  */
-var TagPro = (function () {
+var TagPro = (function (window) {
   function setImmediate(fn) {
     setTimeout(function() {
       fn();
     }, 0);
   }
 
+  // Listen for a global variable to be set and call callback
+  // synchronously when set.
   function onValue(object, property, callback) {
     Object.defineProperty(object, property, {
       enumerable: true,
@@ -25,7 +42,12 @@ var TagPro = (function () {
           configurable: true,
           value: v
         });
-        callback(v);
+        // Protect from callback errors.
+        try {
+          callback(v);
+        } catch (e) {
+          console.error("Error trying to invoke callback for %s.", property);
+        }
       }
     });
   }
@@ -44,155 +66,115 @@ var TagPro = (function () {
       // Force to be async.
       setImmediate(fn);
     } else {
+      // Call synchronously when variable is set.
       onValue(window, "tagpro", function (tagpro) {
         fn();
       });
     }
   }
 
+  // TagPro class.
   function TagPro() {
-    this.callbacks = {
-      "tagpro.exists": [],
-      "tagpro.ready": [],
-      "tagpro.initialized": [],
-      "user.spectating": [],
-      "user.playing": [],
-      "game.pre": [],
-      "game.start": [],
-      "game.end": [],
-      "group": []
-    };
-
+    EventEmitter.apply(this, arguments);
     // Track states.
     this.state = {
-      "tagpro.start": false,
-      "tagpro.ready": false,
-      "tagpro.initialized": false,
-      "user.spectating": false,
-      "user.playing": false,
-      "game.pre": false,
-      "game.start": false,
-      "game.end": false,
-      "group": false
+      group: null, // bool
+      game: null, // str enum "pre", "in", "post"
+      user: null, // "spectating", "playing"
+      tagpro: null, // "exists", "ready", "initialized"
+      socket: null // SocketIO socket.
     };
+
     var self = this;
     onTagPro(function () {
+      self._set("tagpro", "exists");
       self._init();
-      self.emit('start');
+    });
+
+    // Check for group id presence.
+    document.addEventListener("DOMContentLoaded", function () {
+      var group = document.getElementById("groupId");
+      self._set("group", group !== null);
     });
   }
 
+  util.inherits(TagPro, EventEmitter);
+
   // Initialize listeners for states.
+  // @private
   TagPro.prototype._init = function() {
     var self = this;
-    var socket = tagpro.rawSocket;
-
-    function set(type, val) {
-      if (!this.state.hasOwnProperty(type)) return;
-      this.state[type] = val;
-      var arg;
-      if (type == "user.playing") {
-        if (this.state["user.spectating"]) {
-          arg = true;
-        }
-      }
-      console.log("Emitting: %s.", type);
-      self.emit(type);
-    }
-
-    function get(type) {
-      return this.state[type];
-    }
 
     this.on('tagpro.ready', function () {
       // Initialize
       var timeout;
       if (tagpro.spectator) {
-        self.state.spectating = true;
-        self.emit('user.spectating');
+        self._set("user", "spectating");
       } else {
         // Emit playing if not spectator.
         timeout = setTimeout(function () {
-          console.log("PLAYING@@@@@@@@@@@@");
-          self.emit('user.playing');
+          self._set("user", "playing");
         }, 2e3);
       }
 
       // Set up socket listeners.
       tagpro.socket.on('spectator', function (spectating) {
         if (spectating) {
-          self.state.spectating = true;
           if (timeout) {
             // Don't emit playing.
             clearTimeout(timeout);
           }
-          self.emit('user.spectating');
+          self._set("user", "spectating");
         } else {
           // Joining game from spectating.
-          if (self.state.spectating) {
-            self.state.spectating = false;
-            self.emit('user.playing');
+          if (self.get("user") === "spectating") {
+            self._set("user", "playing");
           }
         }
       });
     });
 
+    // beforeready event.
+    this._set("tagpro", "beforeready");
+
+    // async to allow global-game tagpro.ready callbacks to be added.
     setImmediate(function () {
       tagpro.ready(function () {
-        self.emit('tagpro.ready');
+        self._set("tagpro", "ready");
       });
     });
-  };
 
-  TagPro.prototype.on = function(name, fn) {
-    if (!this.callbacks.hasOwnProperty(name)) {
-      this.callbacks[name] = [];
-    }
-    this.callbacks[name].push(fn);
-  };
-
-  TagPro.prototype.off = function(name, fn) {
-    if (this.callbacks.hasOwnProperty(name)) {
-      var i = findIndex(this.callbacks[name], function (elt) {
-        if (typeof elt == "object") {
-          return elt.fn === fn;
-        } else {
-          return elt === fn;
-        }
+    // Socket listener.
+    if (tagpro.rawSocket) {
+      self._set("socket", tagpro.rawSocket);
+    } else {
+      onValue(tagpro, "rawSocket", function (socket) {
+        self._set("socket", socket);
       });
-      if (i !== -1) {
-        this.callbacks[name].splice(i, 1);
-      }
     }
   };
 
-  TagPro.prototype.once = function(name, fn) {
-    if (!this.callbacks.hasOwnProperty(name)) {
-      this.callbacks[name] = [];
-    }
-    this.callbacks[name].push({
-      fn: fn
-    });
-  };
-
+  // Set value and emit.
   // @private
-  TagPro.prototype.emit = function(name) {
-    if (this.callbacks.hasOwnProperty(name)) {
-      var callbacks = this.callbacks[name];
-      for (var i = 0; i < callbacks.length; i++) {
-        var fn = callbacks[i];
-        // Handle 'once' items.
-        if (typeof fn == "object") {
-          callbacks.splice(i, 1);
-          i--;
-          fn = fn.fn;
-        }
-        fn();
-      }
-    }
+  TagPro.prototype._set = function(type, val) {
+    if (!this.state.hasOwnProperty(type)) return;
+    // Update state.
+    this.state[type] = val;
+
+    //console.log("Emitting: %s", type);
+    // Emit to specific listeners.
+    this.emit(type + "." + val, this.state);
+    // Emit to general type listeners.
+    this.emit(type, this.state);
+    // Emit to catch-all listener.
+    this.emit("*", this.state);
+  };
+
+  TagPro.prototype.get = function(type) {
+    return this.state[type];
   };
 
   return new TagPro();
-})();
+})(unsafeWindow || window); // For use in userscripts.
 
 module.exports = TagPro;

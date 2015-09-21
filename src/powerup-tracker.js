@@ -5,11 +5,14 @@ var Vec2 = require('./vec2');
 var TILE_WIDTH = 40;
 
 // Interface that takes in source information and puts it into solver format.
-function PowerupTracker() {
+function PowerupTracker(socket) {
   var self = this;
+  this.socket = socket;
   // handle mapupdate, tile tracking
   // Listen for player powerup grabs.
-  tagpro.socket.on('p', function (event) {
+  socket.on('p', function (event) {
+    // Just in case, but solver should be initialized prior to any p message.
+    if (!self.hasOwnProperty("solver")) return;
     var updates = event.u || event;
     var time = Date.now();
     updates.forEach(function (update) {
@@ -33,7 +36,7 @@ function PowerupTracker() {
             }
           }
           if (!found) {
-            console.warn("Couldn't find adjacent powerup!");
+            console.error("Couldn't find adjacent powerup!");
           }
         } else {
           // Player not visible, send information.
@@ -46,46 +49,63 @@ function PowerupTracker() {
     });
   });
 
-  this.tile_events = new TileEvents("powerup");
-  this.tile_events.on("tile.enter", function (info) {
-    self.solver.setObserved(self.tile_events.getInView());
-    // Delay and assert fact to rule out states.
-    setTimeout(function () {
-      self.solver.addAssertion({
-        variable: info.location.toString(),
-        state: info.state
-      });
-    }, 20);
-  });
-
-  this.tile_events.on("tile.leave", function (info) {
-    self.solver.setObserved(self.tile_events.getInView());
-  });
-
-  this.tile_events.on("tile.update", function (info) {
-    setTimeout(function () {
-      self.solver.addAssertion({
-        variable: info.location.toString(),
-        state: info.state
-      });
-    }, 20);
-  });
-
   this.powerups = [];
   this.powerup_locations = [];
-  tagpro.map.forEach(function (row, x) {
-    row.forEach(function (tile, y) {
-      if (Math.floor(tile) !== 6) return;
-      var powerup = new Vec2(x, y);
-      self.powerups.push(powerup);
-      self.powerup_locations.push(powerup.mulc(TILE_WIDTH, true));
+
+  // Do map-related initializations.
+  socket.on('map', function (map) {
+    // Actual map values.
+    map = map.tiles;
+
+    var present = [];
+    // Get powerup tiles.
+    map.forEach(function (row, x) {
+      row.forEach(function (tile, y) {
+        if (Math.floor(tile) !== 6) return;
+        var powerup = new Vec2(x, y);
+        self.powerups.push(powerup);
+        present.push(tile == 6);
+        self.powerup_locations.push(powerup.mulc(TILE_WIDTH, true));
+      });
+    });
+
+    var variables = self.powerups.map(function (powerup, i) {
+      return {
+        name: powerup.toString(),
+        present: present[i]
+      };
+    });
+
+    self.solver = new Solver(variables);
+    self.tile_events = new TileEvents({
+      tile: "powerup",
+      map: map,
+      socket: self.socket
+    });
+    self.tile_events.on("tile.enter", function (info) {
+      self.solver.setObserved(self.tile_events.getInView());
+      // Delay and assert fact to rule out states.
+      setTimeout(function () {
+        self.solver.addAssertion({
+          variable: info.location.toString(),
+          state: info.state
+        });
+      }, 20);
+    });
+
+    self.tile_events.on("tile.leave", function (info) {
+      self.solver.setObserved(self.tile_events.getInView());
+    });
+
+    self.tile_events.on("tile.update", function (info) {
+      setTimeout(function () {
+        self.solver.addAssertion({
+          variable: info.location.toString(),
+          state: info.state
+        });
+      }, 20);
     });
   });
-
-  var variables = self.powerups.map(function (powerup) {
-    return powerup.toString();
-  });
-  this.solver = new Solver(variables);
 }
 module.exports = PowerupTracker;
 

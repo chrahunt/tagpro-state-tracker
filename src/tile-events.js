@@ -37,9 +37,13 @@ var tileTypes = {
 // events put out are like n.enter, n.leave, n.update where n is floor of tile id you're interested in
 // callback gets tile vec with x, y, and boolean for active
 // default listens for boost, bomb, powerup.
-// Takes string type of tile to listen for.
-function TileEvents(tile) {
+// opts has keys socket, map, tile.
+function TileEvents(opts) {
   EventEmitter.apply(this, arguments);
+  var tile = opts.tile;
+  var map = opts.map;
+  var socket = opts.socket;
+
   this.tile = tileTypes[tile];
   var self = this;
   // Locations to listen for.
@@ -51,7 +55,7 @@ function TileEvents(tile) {
     x: 660,
     y: 420
   };
-  tagpro.map.forEach(function (row, x) {
+  map.forEach(function (row, x) {
     row.forEach(function (v, y) {
       if (self.isType(v)) {
         self.tiles.push(new Vec2(x, y));
@@ -60,7 +64,7 @@ function TileEvents(tile) {
   });
 
   // Listen for mapupdate.
-  tagpro.socket.on('mapupdate', function (updates) {
+  socket.on('mapupdate', function (updates) {
     if (!Array.isArray(updates)) {
       updates = [updates];
     }

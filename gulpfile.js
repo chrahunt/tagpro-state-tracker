@@ -12,7 +12,8 @@ var template = require('gulp-template');
 var watchify = require('watchify');
 
 var src = 'src/main.js';
-var out_dir = './dist';
+var out_dir = 'dist';
+var out_name = 'timers.user.js';
 
 // Bundle source file to dest.
 function bundle(debug) {
@@ -25,21 +26,25 @@ function bundle(debug) {
     .pipe(source(src.replace(/^src\//, '')));
 }
 
+// Builds public version.
 gulp.task('build', function() {
   var pkg = require('./package.json');
   var header = gulp.src('./src/header.user.js')
     .pipe(template({
       version: pkg.version,
-      updateUrl: ""
+      updateUrl: [pkg.repository.url, 'raw/master', out_dir, out_name].join('/')
     }));
-  var script = bundle(true);
+  var script = bundle();
   return streamqueue({ objectMode: true },
-    //header,
+    header,
     script)
-    .pipe(streamify(concat('timers.user.js')))
+    .pipe(streamify(concat(out_name)))
     .pipe(gulp.dest(out_dir));
 });
 
+// Puts 'main.js' into dist dir directory, no header. For use with some
+// auto-loading js extension like chrahunt/script-loader.
+// use `http-server --cors` with http-server npm package for easy loading.
 gulp.task('watch', function() {
   var opts = assign({}, watchify.args, {
     entries: src,
