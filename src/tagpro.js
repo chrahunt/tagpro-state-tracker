@@ -5,7 +5,7 @@ var util = require('util');
  * Makes checking states easier. If module is not loaded synchronously you may miss out on states.
  * Events:
  * * tagpro.exists: tagpro object exists, synchronous with tagpro
- *     variable creation.
+ *     variable creation if script loaded early enough.
  * * tagpro.beforeready: assets loaded, set before any other tagpro ready.
  * * same as tagpro.ready in external script with guard against tagpro not
  *     existing.
@@ -63,6 +63,7 @@ var TagPro = (function (window) {
 
   function onTagPro(fn) {
     if (typeof tagpro !== 'undefined') {
+      console.log("Tagpro already defined.");
       // Force to be async.
       setImmediate(fn);
     } else {
@@ -84,6 +85,8 @@ var TagPro = (function (window) {
       tagpro: null, // "exists", "ready", "initialized"
       socket: null // SocketIO socket.
     };
+    // Allow calling synchronous event handlers async.
+    this.sync_events = [];
 
     var self = this;
     onTagPro(function () {
@@ -140,6 +143,7 @@ var TagPro = (function (window) {
     // async to allow global-game tagpro.ready callbacks to be added.
     setImmediate(function () {
       tagpro.ready(function () {
+        console.log("setting ready");
         self._set("tagpro", "ready");
       });
     });
@@ -161,7 +165,7 @@ var TagPro = (function (window) {
     // Update state.
     this.state[type] = val;
 
-    //console.log("Emitting: %s", type);
+    console.log("Emitting: %s", type);
     // Emit to specific listeners.
     this.emit(type + "." + val, this.state);
     // Emit to general type listeners.
@@ -175,6 +179,6 @@ var TagPro = (function (window) {
   };
 
   return new TagPro();
-})(unsafeWindow || window); // For use in userscripts.
+})((typeof unsafeWindow !== "undefined" && unsafeWindow) || window); // For use in userscripts.
 
 module.exports = TagPro;

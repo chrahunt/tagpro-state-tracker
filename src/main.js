@@ -3,9 +3,10 @@ var Overlay = require('./overlay');
 var TagPro = require('./tagpro');
 
 // Logging.
-/*TagPro.on("*", function (state) {
+TagPro.on("*", function (state) {
   console.log("State: %s.", JSON.stringify(state));
-});*/
+  console.log("tagpro map: " + tagpro.map);
+});
 
 var tracker;
 

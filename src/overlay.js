@@ -1,6 +1,10 @@
 var Vec2 = require('./vec2');
 var Line = require('./line');
 
+/*
+ Overlay handles all writing.
+ */
+
 var TILE_WIDTH = 40;
 var Utils = {
   makeText: function (color) {
@@ -123,9 +127,11 @@ var drawings = [
         return line.clone().scale(1 / scale).translate(gameLocation);
       });
       var viewport = $("#viewport");
-      // Center in game coordinates.
+      // Center in-game coordinates.
       var center = new Vec2(viewport.width(), viewport.height())
+        // Half
         .divc(2)
+        // Scale
         .divc(scale)
         .add(gameLocation);
 

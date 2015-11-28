@@ -5,9 +5,9 @@ var Point = require("./vec2");
  * polygons. Can be called 2 ways.
  * @constructor
  * @example <caption>Constructing from Point objects.</caption>
- *   var e = new Edge(p1, p2)
+ *   var e = new Line(p1, p2)
  * @example <caption>From an array of values.</caption>
- *   var e = new Edge([x1, y1, x2, y2])
+ *   var e = new Line([x1, y1, x2, y2])
  */
 function Line(p1, p2) {
   if (Array.isArray(p1)) {

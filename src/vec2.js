@@ -9,6 +9,7 @@ Vec2.toString = function(v) {
     return "(" + v.x + "," + v.y + ")";
 };
 
+// TODO: Exception handling, format validation.
 Vec2.fromString = function(s) {
     var coords = s.slice(1, -1).split(',').map(Number);
     return new Vec2(coords[0], coords[1]);

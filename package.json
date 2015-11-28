@@ -14,6 +14,7 @@
   },
   "devDependencies": {
     "browserify": "^10.2.4",
+    "chai": "^3.4.1",
     "gulp": "^3.9.0",
     "gulp-concat": "^2.6.0",
     "gulp-derequire": "^2.1.0",
@@ -22,6 +23,8 @@
     "gulp-template": "^3.0.0",
     "gulp-util": "^3.0.5",
     "lodash.assign": "^3.2.0",
+    "mocha": "^2.3.4",
+    "should": "^7.1.1",
     "streamqueue": "^1.1.1",
     "vinyl-source-stream": "^1.1.0",
     "watchify": "^3.2.2"
