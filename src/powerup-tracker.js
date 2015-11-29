@@ -18,7 +18,7 @@ function PowerupTracker(socket) {
     updates.forEach(function (update) {
       if (update['s-powerups']) {
         var id = update.id;
-        if (tagpro.players[id].draw) {
+        if (tagpro.players[id] && tagpro.players[id].draw) {
           // Player is visible, get powerup tile and send observation.
           var position = new Vec2(tagpro.players[id].x, tagpro.players[id].y);
           var found = false;
@@ -38,7 +38,7 @@ function PowerupTracker(socket) {
           if (!found) {
             console.error("Couldn't find adjacent powerup!");
           }
-        } else {
+        } else if (tagpro.players[id]) {
           // Player not visible, send information.
           self.solver.addHypothesis({
             state: false,

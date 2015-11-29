@@ -6,6 +6,7 @@ var Line = require('./line');
  */
 
 var TILE_WIDTH = 40;
+
 var Utils = {
   makeText: function (color) {
     if (typeof color == 'undefined') color = "#FFFFFF";
@@ -30,7 +31,7 @@ var drawings = [
       console.log("Initializing powerup overlay.");
       this.tracker = tracker;
       
-      // TODO: no hard code
+      // TODO: no hard-coded time interval.
       this.powerup_respawn = 60e3;
       var powerups = this.tracker.getPowerups();
       this.debug = new PIXI.Graphics();
@@ -58,7 +59,7 @@ var drawings = [
           text: t
         };
       }, this);
-      $("#viewport").resize(this._onResize.bind(this));
+      $(window).resize(this._onResize.bind(this));
       this._onResize();      
     },
     // Initialize tile overlays.
@@ -76,26 +77,27 @@ var drawings = [
     },
     // Function called on viewport resize.
     _onResize: function () {
-      var viewport = $("#viewport");
+      console.log("window resized, this: %o", this);
+      var $viewport = $("#viewport");
       this.indicator_lines = [];
       // Top.
       this.indicator_lines.push(new Line([
         this.indicator_offset, this.indicator_offset,
-        viewport.width() - this.indicator_offset, this.indicator_offset
+        $viewport.width() - this.indicator_offset, this.indicator_offset
       ]));
       // Right.
       this.indicator_lines.push(new Line([
-        viewport.width() - this.indicator_offset, this.indicator_offset,
-        viewport.width() - this.indicator_offset, viewport.height() - this.indicator_offset
+        $viewport.width() - this.indicator_offset, this.indicator_offset,
+        $viewport.width() - this.indicator_offset, $viewport.height() - this.indicator_offset
       ]));
       // Bottom.
       this.indicator_lines.push(new Line([
-        viewport.width() - this.indicator_offset, viewport.height() - this.indicator_offset,
-        this.indicator_offset, viewport.height() - this.indicator_offset
+        $viewport.width() - this.indicator_offset, $viewport.height() - this.indicator_offset,
+        this.indicator_offset, $viewport.height() - this.indicator_offset
       ]));
       // Left.
       this.indicator_lines.push(new Line([
-        this.indicator_offset, viewport.height() - this.indicator_offset,
+        this.indicator_offset, $viewport.height() - this.indicator_offset,
         this.indicator_offset, this.indicator_offset
       ]));
     },

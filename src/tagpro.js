@@ -63,7 +63,6 @@ var TagPro = (function (window) {
 
   function onTagPro(fn) {
     if (typeof tagpro !== 'undefined') {
-      console.log("Tagpro already defined.");
       // Force to be async.
       setImmediate(fn);
     } else {
@@ -143,7 +142,6 @@ var TagPro = (function (window) {
     // async to allow global-game tagpro.ready callbacks to be added.
     setImmediate(function () {
       tagpro.ready(function () {
-        console.log("setting ready");
         self._set("tagpro", "ready");
       });
     });
@@ -165,7 +163,6 @@ var TagPro = (function (window) {
     // Update state.
     this.state[type] = val;
 
-    console.log("Emitting: %s", type);
     // Emit to specific listeners.
     this.emit(type + "." + val, this.state);
     // Emit to general type listeners.

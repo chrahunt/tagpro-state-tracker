@@ -29,16 +29,26 @@ module.exports = Solver;
  * @property {boolean} state - The initial state of the variable.
  */
 /**
+ * @typedef {object} SolverOptions
+ * @property {integer} [interval=60e3] - Interval (in ms) after which a variable
+ *   changes state back to present.
+ * @property {integer} [time=Date.now()] - Current time to use for the solver, nonzero
+ */
+/**
  * Solver solves boolean dynamic state. Must have known initial states, even
  * with unknown taken times.
  * @param {Array<Variable>} variables - array of variable names.
  */
-function Solver(variables) {
+function Solver(variables, options) {
+  if (typeof options == "undefined") options = {};
   this.variables = {};
   this.states = [];
-  this._time = null;
+  this._time = options.time || Date.now();
+  // Allow interval of 0.
+  this._state_change_interval = options.hasOwnProperty("interval") ? options.interval
+                                                                   : 60e3;
   var state = {};
-  var time = Date.now();
+  var time = this._time;
   var self = this;
   // TODO: Handle unknown or variable start.
   variables.forEach(function (variable) {
@@ -147,8 +157,8 @@ Solver.prototype.applyObservation = function(state, observation) {
     return state;
   } else if (!variable.state && observation.state) {
     // Potentially updating variable.
-    var time = variable.intervals[variable.intervals.length - 1];
-    if (eq(time, observation.time)) {
+    var interval = variable.intervals[variable.intervals.length - 1];
+    if (interval.end && eq(interval.end, observation.time)) {
       // update state.
       variable.state = observation.state;
       variable.intervals.push({
