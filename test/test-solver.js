@@ -22,6 +22,14 @@ describe('Solver', function() {
     });
   }
 
+  it("should work in trivial case", function() {
+    var solver = allTrueInit();
+    var result = solver.getState();
+    expect(result[p_1].state).to.be.true;
+    expect(result[p_2].state).to.be.true;
+    expect(result[p_3].state).to.be.true;
+  });
+
   it("should recognize a visible changed variable", function() {
     var solver = allTrueInit();
     solver.setObserved([p_1, p_2, p_3]);

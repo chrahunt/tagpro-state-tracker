@@ -32,7 +32,8 @@ module.exports = Solver;
  * @typedef {object} SolverOptions
  * @property {integer} [interval=60e3] - Interval (in ms) after which a variable
  *   changes state back to present.
- * @property {integer} [time=Date.now()] - Current time to use for the solver, nonzero
+ * @property {integer} [time=Date.now()] - Current time to use for the solver, nonzero.
+ *   Used only for testing.
  */
 /**
  * Solver solves boolean dynamic state. Must have known initial states, even
@@ -43,12 +44,13 @@ function Solver(variables, options) {
   if (typeof options == "undefined") options = {};
   this.variables = {};
   this.states = [];
-  this._time = options.time || Date.now();
+  // Used for testing.
+  this._time = options.time || 0;
   // Allow interval of 0.
   this._state_change_interval = options.hasOwnProperty("interval") ? options.interval
                                                                    : 60e3;
   var state = {};
-  var time = this._time;
+  var time = Date.now();
   var self = this;
   // TODO: Handle unknown or variable start.
   variables.forEach(function (variable) {
@@ -83,7 +85,15 @@ Solver.prototype.setObserved = function(variables) {
   });
 };
 
-// Hypothesis has time, state.
+/**
+ * @typedef {object} Hypothesis
+ * @property {integer} time - the time the notification occurred.
+ * @property {boolean} state - the notification state.
+ */
+/**
+ * Transition states based on given hypothesis.
+ * @param {Hypothesis} h
+ */
 Solver.prototype.addHypothesis = function(h) {
   this.updateVariables();
   var states = [];
@@ -95,7 +105,13 @@ Solver.prototype.addHypothesis = function(h) {
   this.states = states;
 };
 
-// Returns multiple states or null if invalid
+/**
+ * Returns multiple states or null if invalid
+ * @private
+ * @param {[type]} state [description]
+ * @param {[type]} hypothesis [description]
+ * @return {[type]} [description]
+ */
 Solver.prototype.applyHypothesis = function(state, hypothesis) {
   hypothesis = clone(hypothesis);
   var states = [];
@@ -140,7 +156,12 @@ Solver.prototype.addObservation = function(o) {
   this.states = states;
 };
 
-// Return state with observation applied or null if invalid.
+/**
+ * Return state with observation applied or null if invalid.
+ * @private
+ * @param {object} state
+ * @param {object} observation
+ */
 Solver.prototype.applyObservation = function(state, observation) {
   var variable = state[observation.variable];
   if (variable.state && !observation.state) {
@@ -177,7 +198,11 @@ Solver.prototype.applyObservation = function(state, observation) {
   }
 };
 
-// Get set of possible states.
+/**
+ * Get set of possible states.
+ * @private
+ * @return {Array.<State>} the current possible states
+ */
 Solver.prototype.getStates = function() {
   this.updateVariables();
   return this.states.slice();
@@ -197,9 +222,12 @@ Solver.prototype.checkAssertion = function(state, assertion) {
   return variable.state === assertion.state;
 };
 
-// Get consolidated state.
-// Each variable has state (true|false|null), change (if false). change
-// is number or array (if there is disagreement)
+/**
+ * Get consolidated state indicating known/unknown variable values.
+ * @return {OutState} - State with addtl values, each variable has
+ *   state (true|false|null), change (if false). change is number or
+ *   array (if there is disagreement).
+ */
 Solver.prototype.getState = function() {
   this.updateVariables();
   // Construct output.
@@ -250,8 +278,10 @@ Solver.prototype.getState = function() {
   }, out);
 };
 
-// Update `false` state variables based on false end
-// time, if present.
+/**
+ * Update `false` state variables based on false end time, if present.
+ * @private
+ */
 Solver.prototype.updateVariables = function() {
   var time = this._time || Date.now();
   for (var i = 0; i < this.states.length; i++) {
