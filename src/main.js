@@ -15,8 +15,9 @@ TagPro.on("socket", function (state) {
   // guard against group games.
   //if (!state.group) {
     tracker = new PowerupTracker(state.socket);
-    // Initialize overlay when user playing.
+    // Initialize overlay when user playing (instead of spectating).
     TagPro.on("user.playing", function (state) {
+      tracker.start();
       var overlay = new Overlay(tracker);
     });
   //}
