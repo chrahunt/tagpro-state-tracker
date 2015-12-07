@@ -298,7 +298,13 @@ Solver.prototype.applyObservation = function(state, observation) {
     // Expected state.
     return state;
   } else if (current.state === "unknown" && observation.state === "present") {
-
+    current.state = observation.state;
+    current.intervals.push({
+      state: observation.state,
+      start: observation.time,
+      end: null
+    });
+    return state;
   } else if (current.state === "unknown" && observation.state === "absent") {
     if (active) {
       // Saw an unknown variable get changed.
@@ -354,53 +360,57 @@ Solver.prototype.getStates = function() {
  */
 Solver.prototype.getState = function() {
   this.updateVariables();
-  // Construct output.
-  var out = {};
-  var state = this.states[0];
-  for (var name in state) {
-    var variable = state[name];
-    if (variable.state === "present") {
-      out[name] = {
-        state: variable.state
-      };
-    } else {
-      var time = variable.intervals[variable.intervals.length - 1].end;
-      out[name] = {
-        state: variable.state,
-        time: time
-      };
-    }
-  }
-  // Compare results across all states.
-  return this.states.slice(1).reduce(function (out, state) {
-    for (var name in out) {
-      var out_variable = out[name],
-          variable = state[name];
-      // Check for matching states.
-      if (out_variable.state === variable.state) {
-        // Falsy check time.
-        if (out_variable.state === "absent") {
-          // TODO: check undefined in case interval not updated?
-          // Get end of most recent applicable interval.
-          var change = variable.intervals[variable.intervals.length - 1].end;
-          if (out_variable.time instanceof Array) {
-            if (out_variable.time.indexOf(change) === -1) {
-              out_variable.time.push(change);
-            }
-          } else if (out_variable.time !== change) {
-            var times = [out_variable.time, change];
-            out_variable.time = times;
-          } // Else matches, so no problem.
-        }
+  if (this.states.length > 0) {
+    // Construct output.
+    var out = {};
+    var state = this.states[0];
+    for (var name in state) {
+      var variable = state[name];
+      if (variable.state === "present") {
+        out[name] = {
+          state: variable.state
+        };
       } else {
-        // Conflicted states.
-        out_variable.state = "unknown";
-        // In case it was set.
-        delete out_variable.time;
+        var time = variable.intervals[variable.intervals.length - 1].end;
+        out[name] = {
+          state: variable.state,
+          time: time
+        };
       }
     }
-    return out;
-  }, out);
+    // Compare results across all states.
+    return this.states.slice(1).reduce(function (out, state) {
+      for (var name in out) {
+        var out_variable = out[name],
+            variable = state[name];
+        // Check for matching states.
+        if (out_variable.state === variable.state) {
+          // Falsy check time.
+          if (out_variable.state === "absent") {
+            // TODO: check undefined in case interval not updated?
+            // Get end of most recent applicable interval.
+            var change = variable.intervals[variable.intervals.length - 1].end;
+            if (out_variable.time instanceof Array) {
+              if (out_variable.time.indexOf(change) === -1) {
+                out_variable.time.push(change);
+              }
+            } else if (out_variable.time !== change) {
+              var times = [out_variable.time, change];
+              out_variable.time = times;
+            } // Else matches, so no problem.
+          }
+        } else {
+          // Conflicted states.
+          out_variable.state = "unknown";
+          // In case it was set.
+          delete out_variable.time;
+        }
+      }
+      return out;
+    }, out);
+  } else {
+    return null;
+  }
 };
 
 /**

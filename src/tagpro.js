@@ -46,7 +46,7 @@ var TagPro = (function (window) {
         try {
           callback(v);
         } catch (e) {
-          console.error("Error trying to invoke callback for %s.", property);
+          console.error("Error trying to invoke callback for %s: %o", property, e);
         }
       }
     });

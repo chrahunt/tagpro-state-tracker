@@ -1,28 +1,3 @@
-var Vec2 = require('./vec2');
-var Line = require('./line');
-
-/*
- Overlay handles all writing.
- */
-
-var TILE_WIDTH = 40;
-
-var Utils = {
-  makeText: function (color) {
-    if (typeof color == 'undefined') color = "#FFFFFF";
-    var text = new PIXI.Text("", {
-        font: "bold 10pt Arial",
-        fill: color,
-        stroke: "#000000",
-        strokeThickness: 3,
-        align: "center"
-    });
-    text.anchor = new PIXI.Point(0.5, 0.5);
-    text.visible = false;
-    return text;
-  }
-};
-
 // Various drawings.
 // Drawing has properties init, update, hide, show.
 var drawings = [
@@ -146,7 +121,7 @@ var drawings = [
         } else {
           // Get text for indicator.
           var text;
-          if (powerup.state) {
+          if (powerup.state === "present") {
             // TODO: Icon if value known.
             text = "!";
           } else {

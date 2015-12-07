@@ -18,13 +18,24 @@ describe("Vec2", function() {
     });
   });
 
+  describe("addition", function() {
+    it("should add two vectors", function() {
+      // Adding two vectors.
+      var vec1 = Vec2.fromString("(1,0)");
+      var vec2 = Vec2.fromString("(0,2)");
+      vec1.add(vec2);
+      expect(vec1.x).to.equal(1);
+      expect(vec1.y).to.equal(2);
+    });
+
+    it("should add a vector and a constant", function() {
+
+    });
+
+    it("should add a vector and ")
+  });
   it("should add", function() {
-    // Adding two vectors.
-    var vec1 = Vec2.fromString("(1,0)");
-    var vec2 = Vec2.fromString("(0,2)");
-    vec1.add(vec2);
-    expect(vec1.x).to.equal(1);
-    expect(vec1.y).to.equal(2);
+    
 
     // Adding vector with constant.
     

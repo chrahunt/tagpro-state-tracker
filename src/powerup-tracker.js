@@ -4,11 +4,14 @@ var Vec2 = require('./vec2');
 
 var TILE_WIDTH = 40;
 
+module.exports = PowerupTracker;
+
 // Interface that takes in source information and puts it into solver format.
 // Must be initialized with socket prior to "map" and "time" events in initialization.
 function PowerupTracker(socket) {
   var self = this;
   this.socket = socket;
+  this.empty = false;
 
   // handle mapupdate, tile tracking
   // Listen for player powerup grabs.
@@ -29,7 +32,7 @@ function PowerupTracker(socket) {
             // TODO: More specific powerup finding location.
             if (position.dist(powerup) < 40) {
               var variable = self.powerups[i].toString();
-              self.solver.addObservation(variable, false, time);
+              self.solver.addObservation(variable, "absent", time);
               found = true;
               break;
             }
@@ -39,8 +42,9 @@ function PowerupTracker(socket) {
           }
         } else if (tagpro.players[id]) {
           // Player not visible, send information.
+          console.log("Sending powerup notification.");
           self.solver.addNotification({
-            state: false,
+            state: "absent",
             time: time
           });
         }
@@ -86,7 +90,10 @@ function PowerupTracker(socket) {
     });
 
     // Updates the state of the game, occurs almost immediately after `map` message.
-    socket.on("time", function (info) {
+    socket.on("time", function timeListener(info) {
+      console.log("Got game state: %d", info.state);
+      socket.off("time", timeListener);
+
       var state = info.state;
       if (state === 3 && info.time > 2000) {
         // Game not started and game start not close enough to be less
@@ -98,17 +105,17 @@ function PowerupTracker(socket) {
 
         self.solver.setObserved(variables);
         variables.forEach(function (variable) {
-          self.solver.addObservation(variable, true);
+          self.solver.addObservation(variable, "present");
         });
+        self.solver.setObserved([]);
       } else if (state === 1) {
         // Game active, don't trust map data. Let tile events naturally
         // figure out values.
-        console.error("Post game-start initialization not supported.");
+        console.warn("Post game-start initialization not supported.");
       }
     });
   }
 }
-module.exports = PowerupTracker;
 
 /**
  * Start the powerup tracker, initializes the tile-tracking subsystem.
@@ -127,12 +134,19 @@ PowerupTracker.prototype.start = function() {
   this.tile_events.on("tile.enter", function (info) {
     self.solver.setObserved(self.tile_events.getInView());
     // Delay and assert fact to rule out states.
-    setTimeout(function () {
+    /*setTimeout(function () {
       self.solver.addAssertion({
         variable: info.location.toString(),
         state: info.state
       });
-    }, 20);
+    }, 20);*/
+    setTimeout(function () {
+      var state = info.state ? "present"
+                             : "absent";
+      var id = info.location.toString();
+      console.log("Observed %s: %s", id, state);
+      self.solver.addObservation(id, state);
+    }, 50);
   });
 
   this.tile_events.on("tile.leave", function (info) {
@@ -140,55 +154,74 @@ PowerupTracker.prototype.start = function() {
   });
 
   this.tile_events.on("tile.update", function (info) {
-    setTimeout(function () {
+    self.solver.setObserved(self.tile_events.getInView());
+    /*setTimeout(function () {
       self.solver.addAssertion({
         variable: info.location.toString(),
         state: info.state
       });
-    }, 20);
+    }, 20);*/
+    setTimeout(function () {
+      var state = info.state ? "present"
+                             : "absent";
+      var id = info.location.toString();
+      console.log("Observed %s: %s", id, state);
+      self.solver.addObservation(info.location.toString(), state);
+    }, 50);
   });
 };
 
-// TODO: Initialization and state management in case solver goes crazy.
-
-PowerupTracker.prototype.getPowerups = function() {
+PowerupTracker.prototype.getTiles = function() {
   var state = this.solver.getState();
+  if (state === null && !this.empty) {
+    this.empty = true;
+    console.warn("Empty states.");
+    return null;
+  } else if (state === null && this.empty) {
+    return null;
+  } else if (state !== null && this.empty) {
+    console.log("States re-created.");
+    this.empty = false;
+  }
   var in_view = this.tile_events.getInView();
   var powerups = [];
+  // todo: variable spawn time.
+  var respawn = 60e3;
   for (var variable in state) {
+    var loc = Vec2.fromString(variable);
+    var powerup = state[variable];
+    // need x, y, content
+    var content;
+    if (powerup.state === "present") {
+      content = "!";
+    } else {
+      if (Array.isArray(powerup.time)) {
+        content = "?";
+      } else {
+        var respawn_time = powerup.time && powerup.time - Date.now();
+        if (respawn_time && respawn_time > 0) {
+          content = (respawn_time / 1e3).toFixed(1);
+        } else {
+          content = "?";
+        }
+      }
+    }
+    // if visible, then no content.
+    // variable for content or not setting?
     powerups.push({
+      x: loc.x * TILE_WIDTH + TILE_WIDTH / 2,
+      y: loc.y * TILE_WIDTH + TILE_WIDTH / 2,
+      content: content,
+      hideOverlay: powerup.state === "present"
+    });
+
+    /*powerups.push({
       id: variable,
       location: Vec2.fromString(variable),
       visible: this.tile_events.in_view.indexOf(variable) !== -1,
       state: state[variable].state,
       time: state[variable].time
-    });
+    });*/
   }
   return powerups;
-};
-
-/**
- * Check whether there are powerup tiles adjacent to the given tile.
- * @param {object} loc - Object with x and y properties corresponding
- *   to array location to look around.
- * @return {boolean} - Whether or not any adjacent tiles are powerups.
- */
-PowerupTracker.prototype.adjacentPowerup = function(loc) {
-  var offsets = [-1, 0, 1];
-  var x = loc.x;
-  var y = loc.y;
-  for (var i = 0; i < offsets.length; i++) {
-    for (var j = 0; j < offsets.length; j++) {
-      var thisX = x + offsets[i],
-          thisY = y + offsets[j];
-      if ((thisX < 0 || thisX > this.map.length - 1) ||
-        (thisY < 0 || thisY > this.map.length - 1) ||
-        (thisX === x && thisY === y)) {
-        continue;
-      } else if (Math.floor(this.map[thisX][thisY]) == 6) {
-        return true;
-      }
-    }
-  }
-  return false;
 };
