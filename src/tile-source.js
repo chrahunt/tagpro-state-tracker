@@ -15,6 +15,4 @@ function TileSource() {}
  */
 
 // Return tiles to be displayed, array of Tile, or null for none.
-TileSource.prototype.getTiles = function() {
-  // body...
-};
+TileSource.prototype.getTiles = function() {};

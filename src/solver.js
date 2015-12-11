@@ -70,6 +70,7 @@ function Solver(variables, options) {
     var status = options.observedStart ? variable_state
                                        : "unknown";
     state[name] = {
+      id: name,
       state: status,
       intervals: [{
         state: status,
@@ -233,6 +234,35 @@ Solver.prototype.addObservation = function(variable, state, time) {
   this.states = states;
 };
 
+// Given a variable state, return the variable state id.
+Solver.prototype.getStateId = function(state) {
+  var id = "";
+  if (state.state === "present") {
+    id += "present:";
+    id += this.variables[state.id].observed ? "observed"
+                                            : "unobserved";
+  } else if (state.state === "absent") {
+    id += "absent:";
+    id += state.intervals[state.intervals.length - 1].end === null ? "unknown"
+                                                                   : "known";
+  } else if (state.state === "unknown") {
+    id += "unknown";
+  }
+  return id;
+};
+
+function getObservationId(obs) {
+  var id = obs.state;
+  if (obs.hasOwnProperty("time")) {
+    id += ":time";
+  }
+  return id;
+}
+
+function getChangeTime(v) {
+  return v.intervals[v.intervals.length - 1].end;
+}
+
 /**
  * Return state with observation applied or null if invalid.
  * @private
@@ -240,91 +270,136 @@ Solver.prototype.addObservation = function(variable, state, time) {
  * @param {object} observation
  */
 Solver.prototype.applyObservation = function(state, observation) {
-  var current = state[observation.variable];
-  // Whether this is an active update that is meant to update states,
-  // or an observation meant to whittle down the number of possible states.
-  var active = observation.hasOwnProperty("time");
-  if (current.state === "present" && observation.state === "absent") {
-    if (active) {
-      // Change in observed variable true -> false
-      current.state = observation.state;
-      current.intervals.push({
-        state: current.state,
-        start: observation.time,
-        end: observation.time + STATE_CHANGE
+  var self = this;
+  function setPresent(v) {
+    v.state = "present";
+    v.intervals.push({
+      state: "present",
+      start: Date.now(),
+      end: null
+    });
+  }
+  function setAbsent(v, time) {
+    if (typeof time == "undefined") time = null;
+    v.state = "absent";
+    if (time !== null) {
+      v.intervals.push({
+        state: "absent",
+        start: time,
+        end: time + self._state_change_interval
       });
     } else {
-      current.state = observation.state;
-      current.intervals.push({
-        state: current.state,
+      v.intervals.push({
+        state: "absent",
         start: Date.now(),
         end: null
       });
     }
-    return state;
-  } else if (current.state === "present" && observation.state === "present") {
-    if (active) {
-      // should check that time on observation is same as the start time of the interval
+  }
+  var Actions = {
+    keep: "keep",
+    drop: "drop"
+  };
+  var current = state[observation.variable];
+  var stateId = this.getStateId(current);
+  var observationId = getObservationId(observation);
+  var action = null;
+
+  if (stateId == "unknown") {
+    if (observationId == "present") {
+      setPresent(current);
+      action = Actions.keep;
+    } else if (observationId == "present:time") {
+      // tag: weird
+      setPresent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent") {
+      setAbsent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      setAbsent(current, observation.time);
+      action = Actions.keep;
     }
-    // else expected state.
-    return state;
-  } else if (current.state === "absent" && observation.state === "present") {
-    if (active) {
-      // Visible update, check to see if this is an observation that coincides with the interval time
-      // or update.
-      // Potentially updating current.
-      var interval = current.intervals[current.intervals.length - 1];
-      // Respawn time.
-      var end = interval.end;
-      if (interval.end && eq(interval.end, observation.time)) {
-        // update state.
-        current.state = observation.state;
-        current.intervals.push({
-          state: observation.state,
-          start: observation.time,
-          end: null
-        });
-        return state;
+  } else if (stateId == "absent:unknown") {
+    if (observationId == "present") {
+      setPresent(current);
+      action = Actions.keep;
+    } else if (observationId == "present:time") {
+      setPresent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent") {
+      // tag: no_change
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      // tag: weird
+      // desc: perfect grab might result in this
+      setAbsent(current, observation.time);
+      action = Actions.keep;
+    }
+  } else if (stateId == "absent:known") {
+    if (observationId == "present") {
+      if (eq(getChangeTime(current), Date.now())) {
+        setPresent(current);
+        action = Actions.keep;
       } else {
-        // Could not update this variable.
-        return null;
+        action = Actions.drop;
       }
-    } else {
-      // observation that conflicts with state, should be null.
-    } 
-  } else if (current.state === "absent" && observation.state === "absent") {
-    // TODO: Check if observation includes time, which would update
-    // if current state did not include time, or if it conflicted.
-    // Expected state.
-    return state;
-  } else if (current.state === "unknown" && observation.state === "present") {
-    current.state = observation.state;
-    current.intervals.push({
-      state: observation.state,
-      start: observation.time,
-      end: null
-    });
-    return state;
-  } else if (current.state === "unknown" && observation.state === "absent") {
-    if (active) {
-      // Saw an unknown variable get changed.
-      current.state = observation.state;
-      current.intervals.push({
-        state: observation.state,
-        start: observation.time,
-        end: null
-      });
-      return state;
-    } else {
-      // Observed an unkown variable to be absent, but didn't see the change.
-      current.state = observation.state;
-      current.intervals.push({
-        state: observation.state,
-        start: observation.time,
-        end: null
-      });
-      return state;
+    } else if (observationId == "present:time") {
+      if (eq(getChangeTime(current), observation.time)) {
+        setPresent(current);
+        action = Actions.keep;
+      } else {
+        action = Actions.drop;
+      }
+    } else if (observationId == "absent") {
+      // tag: no_change
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      // tag:weird
+      // desc: perfect grab
+      if (eq(getChangeTime(current), observation.time)) {
+        setAbsent(current, observation.time);
+        action = Actions.keep;
+      } else {
+        action = Actions.drop;
+      }
     }
+  } else if (stateId == "present:observed") {
+    if (observationId == "present") {
+      // tag: no_change
+      action = Actions.keep;
+    } else if (observationId == "present:time") {
+      // tag: weird
+      action = Actions.keep;
+    } else if (observationId == "absent") {
+      // tag: weird
+      setAbsent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      setAbsent(current, observation.time);
+      action = Actions.keep;
+    }
+  } else if (stateId == "present:unobserved") {
+    if (observationId == "present") {
+      // tag: no_change
+      action = Actions.keep;
+    } else if (observationId == "present:time") {
+      // tag: weird
+      action = Actions.keep;
+    } else if (observationId == "absent") {
+      // tag: weird
+      setAbsent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      setAbsent(current, observation.time);
+      action = Actions.keep;
+    }
+  }
+
+  if (action == Actions.keep) {
+    return state;
+  } else {
+    return null;
   }
 };
 

@@ -286,6 +286,8 @@ describe('Solver', function() {
       expect(result[p_1].state).to.equal("absent");
       expect(result[p_1].time).to.be.null;
     });
+
+    it("should not assume an end to an unknown variable state when other variables are observed");
   });
 
   it("should not crash with many unresolved hypotheses");
