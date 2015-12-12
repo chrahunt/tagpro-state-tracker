@@ -4,12 +4,12 @@ var Vec2 = require('../src/vec2');
 describe("Vec2", function() {
   it("should construct vector from string", function() {
     var data = [
-      { s: "(  1,  1)", x: 1, y: 1 },
-      { s: "( -1,  1)", x: -1, y: 1 },
-      { s: "(  1, -1)", x: 1, y: -1 },
-      { s: "(0.5,  1)", x: 0.5, y: 1 },
-      { s: "(  1,0.5)", x: 1, y: 0.5 },
-      { s: "(  1,  1)", x: 1, y: 1 },
+      { s: "(  1,  1)", x:   1, y:   1 },
+      { s: "( -1,  1)", x:  -1, y:   1 },
+      { s: "(  1, -1)", x:   1, y:  -1 },
+      { s: "(0.5,  1)", x: 0.5, y:   1 },
+      { s: "(  1,0.5)", x:   1, y: 0.5 },
+      { s: "(  1,  1)", x:   1, y:   1 },
     ];
     data.forEach(function (experiment) {
       var vec = Vec2.fromString(experiment.s);
@@ -18,8 +18,8 @@ describe("Vec2", function() {
     });
   });
 
-  describe("addition", function() {
-    it("should add two vectors", function() {
+  describe("addition", function () {
+    it("should add two vectors", function () {
       // Adding two vectors.
       var vec1 = Vec2.fromString("(1,0)");
       var vec2 = Vec2.fromString("(0,2)");
@@ -28,24 +28,20 @@ describe("Vec2", function() {
       expect(vec1.y).to.equal(2);
     });
 
-    it("should add a vector and a constant", function() {
+    it("should add a vector and a constant", function () {
 
     });
 
-    it("should add a vector and ")
-  });
-  it("should add", function() {
-    
-
-    // Adding vector with constant.
-    
-    // Adding two vectors and returning new.
-    // Adding vector with constant and returning new.
+    it("should return vector after operation");
   });
 
-  it("should subtract");
+  describe("subtraction", function () {
 
-  it("should multiply");
+  });
+
+  describe("multiplication", function () {
+
+  });
 
   it("should compute the dot product");
 

@@ -1,25 +1,13 @@
 var Vec2 = require('./vec2');
 var Line = require('./line');
 
-var TILE_WIDTH = 40;
-
-var Utils = {
-  makeText: function (color) {
-    if (typeof color == 'undefined') color = "#FFFFFF";
-    var text = new PIXI.Text("", {
-        font: "bold 10pt Arial",
-        fill: color,
-        stroke: "#000000",
-        strokeThickness: 3,
-        align: "center"
-    });
-    text.anchor = new PIXI.Point(0.5, 0.5);
-    text.visible = false;
-    return text;
-  }
-};
-
 module.exports = TileOverlay;
+
+/**
+ * [TileOverlay description]
+ * @param {[type]} source [description]
+ * @param {[type]} options [description]
+ */
 function TileOverlay(source, options) {
   if (typeof options == "undefined") options = {};
   // offset for indicator frame.
@@ -44,7 +32,7 @@ function TileOverlay(source, options) {
     var sprite = new PIXI.Sprite(texture);
     sprite.anchor = new PIXI.Point(0.5, 0.5);
     self.indicator_ui.addChild(sprite);
-    var t = Utils.makeText();
+    var t = makeText();
     self.indicator_ui.addChild(t);
     sprite.visible = false;
     t.visible = false;
@@ -60,7 +48,7 @@ function TileOverlay(source, options) {
   this.tile_overlays = {};
   tiles.forEach(function (tile) {
     var id = Vec2.toString(tile);
-    var t = Utils.makeText();
+    var t = makeText();
     self.tile_ui.addChild(t);
     self.tile_overlays[id] = {
       text: t
@@ -258,3 +246,17 @@ TileOverlay.prototype._onResize = function() {
     indicator_offset, indicator_offset
   ]));
 };
+
+function makeText(color) {
+  if (typeof color == 'undefined') color = "#FFFFFF";
+  var text = new PIXI.Text("", {
+    font: "bold 10pt Arial",
+    fill: color,
+    stroke: "#000000",
+    strokeThickness: 3,
+    align: "center"
+  });
+  text.anchor = new PIXI.Point(0.5, 0.5);
+  text.visible = false;
+  return text;
+}

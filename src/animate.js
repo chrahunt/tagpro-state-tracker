@@ -1,7 +1,8 @@
 module.exports = Animate;
+
 /**
  * Run provided function in animation frame.
- * @param {Function} fn [description]
+ * @param {Function} fn - Function to be executed.
  * @param {boolean} [start=true] - Whether to start the animation loop.
  */
 function Animate(fn, start) {

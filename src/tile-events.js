@@ -1,8 +1,8 @@
 var Vec2 = require('./vec2');
+var C = require('./constants');
+
 var EventEmitter = require('events').EventEmitter;
 var util = require('util');
-
-var TILE_WIDTH = 40;
 
 var tileIds = [5, 6, 10, 14, 15];
 var tileStrings = {
@@ -115,7 +115,7 @@ TileEvents.prototype._interval = function() {
   var time = Date.now();
 
   this.tiles.forEach(function (tile) {
-    var diff = tile.mulc(TILE_WIDTH, true).sub(location).abs();
+    var diff = tile.c().mulc(C.TILE_WIDTH).sub(location).abs();
     var in_view = (diff.x < this.range.x && diff.y < this.range.y);
     var id = tile.toString();
     var already_in_view = self.in_view.indexOf(id) !== -1;

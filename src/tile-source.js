@@ -1,5 +1,3 @@
-var Vec2 = require('vec2');
-
 // Interface for tileSource for tile overlay.
 function TileSource() {}
 

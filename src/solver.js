@@ -403,20 +403,6 @@ Solver.prototype.applyObservation = function(state, observation) {
   }
 };
 
-// Like an observation except probably more powerful.
-Solver.prototype.addAssertion = function(o) {
-  this.updateVariables();
-  var self = this;
-  this.states = this.states.filter(function (state) {
-    return self.checkAssertion(state, o);
-  });
-};
-
-Solver.prototype.checkAssertion = function(state, assertion) {
-  var variable = state[assertion.variable];
-  return variable.state === assertion.state;
-};
-
 /**
  * Get set of possible states.
  * @private

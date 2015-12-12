@@ -1,5 +1,4 @@
 var PowerupTracker = require('./powerup-tracker');
-//var Overlay = require('./overlay');
 var TagPro = require('./tagpro');
 var CornerSource = require('./test-tile-source');
 var TileOverlay = require('./tile-overlay');
