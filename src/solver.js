@@ -41,6 +41,8 @@ module.exports = Solver;
  *   Used only for testing.
  * @property {boolean} [observedStart=false] - Whether the states given with
  *   the variables should be applied as-is or initialized to unknown.
+ * @property {boolean} [debug=false] - Set debug options, toggles logging
+ *   and observation/notification storage.
  */
 /**
  * Solver solves boolean dynamic state. Must have known initial states, even
@@ -55,6 +57,7 @@ function Solver(variables, options) {
   // Allows interval of 0.
   this._state_change_interval = options.hasOwnProperty("interval") ? options.interval
                                                                    : 60e3;
+  this._debug = options.debug || false;
   this.variables = {};
   this.states = [];
   var state = {};
@@ -100,31 +103,8 @@ Solver.prototype.setObserved = function(variables) {
   unobserved_variables.forEach(function (variable) {
     self.variables[variable].observed = false;
   });
-};
-
-/**
- * A Notification can communicate three distinct messages:
- *  1. A variable has changed, but we don't know which one. state and time
- *     are required.
- *  2. A variable has changed, and we saw it change. state, time, and variable
- *     are required. Variable must be observed.
- *  3. We have come upon a variable and notice its state, but are not sure
- *     when it may have changed. variable and state are required. Variable
- *     must be observed.
- * @typedef {object} Notification
- * @property {boolean} state - the state being updated.
- * @property {string} [variable] - the variable being updated, if
- *   applicable.
- * @property {timestamp} [time] - the time the variable was updated, if
- *   known.
- */
-/**
- * Notify solver of some state change.
- * @param {[type]} notification [description]
- * @return {[type]} [description]
- */
-Solver.prototype.notify = function(notification) {
-  // body...
+  this._log("Variables observed: %s", variables.length !== 0 ? variables.join("; ")
+                                                             : "none");
 };
 
 /**
@@ -143,6 +123,7 @@ Solver.prototype.notify = function(notification) {
 Solver.prototype.addNotification = function(msg) {
   if (msg.state !== "absent")
     throw new Error("Non-absent notification not supported!");
+  this._log("Notified: %d", msg.time);
   this.updateVariables();
   var states = [];
   for (var i = 0; i < this.states.length; i++) {
@@ -224,6 +205,7 @@ Solver.prototype.addObservation = function(variable, state, time) {
     state: state
   };
   if (typeof time !== "undefined") o.time = time;
+  this._log("Observed v:%s s:%s t:%s", o.variable, o.state, o.time);
   // Generate successor states based on observation.
   var states = [];
   for (var i = 0; i < this.states.length; i++) {
@@ -523,4 +505,14 @@ Solver.prototype.updateVariables = function() {
     states.push(state);
   }
   this.states = states;
+};
+
+/**
+ * Same interface as `console.log`.
+ * @private
+ */
+Solver.prototype._log = function() {
+  if (this._debug) {
+    console.log.apply(console, Array.prototype.slice.call(arguments));
+  }
 };
