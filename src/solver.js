@@ -1,20 +1,7 @@
-// Time for state to change back.
-var STATE_CHANGE = 6e4;
+var Compare = require('./compare');
+
 // Possible notification lag.
-var EPSILON = 2e3;
-
-// Comparison operations.
-function lt(a, b) {
-  return a - b < EPSILON;
-}
-
-function gt(a, b) {
-  return b - a < EPSILON;
-}
-
-function eq(a, b) {
-  return Math.abs(a - b) < EPSILON;
-}
+var compare = new Compare(2e3);
 
 // Object clone.
 function clone(obj) {
@@ -320,14 +307,14 @@ Solver.prototype.applyObservation = function(state, observation) {
     }
   } else if (stateId == "absent:known") {
     if (observationId == "present") {
-      if (eq(getChangeTime(current), Date.now())) {
+      if (compare.eq(getChangeTime(current), Date.now())) {
         setPresent(current);
         action = Actions.keep;
       } else {
         action = Actions.drop;
       }
     } else if (observationId == "present:time") {
-      if (eq(getChangeTime(current), observation.time)) {
+      if (compare.eq(getChangeTime(current), observation.time)) {
         setPresent(current);
         action = Actions.keep;
       } else {
@@ -339,7 +326,7 @@ Solver.prototype.applyObservation = function(state, observation) {
     } else if (observationId == "absent:time") {
       // tag:weird
       // desc: perfect grab
-      if (eq(getChangeTime(current), observation.time)) {
+      if (compare.eq(getChangeTime(current), observation.time)) {
         setAbsent(current, observation.time);
         action = Actions.keep;
       } else {

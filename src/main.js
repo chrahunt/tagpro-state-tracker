@@ -5,14 +5,6 @@ var TileOverlay = require('./tile-overlay');
 var Animate = require('./animate');
 var SightTracker = require('./sight-tracker');
 
-// Logging.
-/*TagPro.on("*", function (state) {
-  console.log("State: %s.", JSON.stringify(state));
-  console.log("tagpro map: " + tagpro.map);
-});*/
-
-//var tracker;
-
 // Get socket immediately.
 TagPro.on("socket", function (state) {
   var powerup_tracker = new PowerupTracker(state.socket);

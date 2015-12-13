@@ -59,8 +59,28 @@ describe("Compare", function () {
   });
 
   describe("greater than", function () {
-    it("should consider a > b if a + epsilon > b");
+    it("should consider a > b if a + epsilon > b", function () {
+      var cmp = new Compare(1);
+      var tests = [
+        [2, 1],
+        [3, 3.5],
+        [-3.5, -3]
+      ];
+      tests.forEach(function (test) {
+        expect(cmp.gt(test[0], test[1])).to.be.true;
+      });
+    });
 
-    it("should not consider a > b if a + epsilon < b");
+    it("should not consider a > b if a + epsilon < b", function () {
+      var cmp = new Compare(1);
+      var tests = [
+        [3, 5],
+        [0, 2],
+        [-3.5, -2]
+      ];
+      tests.forEach(function (test) {
+        expect(cmp.gt(test[0], test[1])).to.be.false;
+      });
+    });
   });
 });

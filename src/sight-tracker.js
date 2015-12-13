@@ -1,9 +1,9 @@
 var C = require('./constants');
 var TileEvents = require('./tile-events');
-var Cmp = require('./compare');
+var Compare = require('./compare');
 var Vec2 = require('./vec2');
 
-var compare = new Cmp(0.1);
+var compare = new Compare(0.1);
 
 module.exports = SightTracker;
 /**
