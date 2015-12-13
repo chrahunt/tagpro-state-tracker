@@ -19,19 +19,17 @@ function SightTracker(opts) {
   // get list of the tiles to be tracked
   var map = opts.map;
   var socket = opts.socket;
-  //var tile = opts.tile;
+  var tile = opts.tile;
   this.state = {};
-  // TODO: general respawn, not bomb-specific
-  this.respawn = 30e3;
+  this.respawn = C.RESPAWN[tile];
   var self = this;
 
   map.forEach(function (row, x) {
     row.forEach(function (v, y) {
-      // TODO: general tile, now bomb-specific.
-      if (C.TILES.bomb.id.indexOf(v) !== -1) {
+      if (C.TILES[tile].id.indexOf(v) !== -1) {
         self.state[new Vec2(x, y).toString()] = {
           state: "present",
-          taken: null
+          time: null
         };
       }
     });
@@ -39,7 +37,7 @@ function SightTracker(opts) {
 
   // TODO: general events, not bomb-specific.
   this.events = new TileEvents({
-    tile: "bomb",
+    tile: tile,
     map: map,
     socket: socket
   });
@@ -109,21 +107,7 @@ function SightTracker(opts) {
       }
     }
   });
-
-  // create a state that consists of all the tiles
-  // if a tile reaches its end time then we can set it to some state
-  // "present"
-  // if we come upon a tile but don't have a future end time for it then assume it was just taken
-  // and set it to
-  // then "absent:unknown"
-  // if a tile is taken then
-  // "absent:known"
-  // It's just an easier FSM kind of thing.
 }
-
-SightTracker.prototype.start = function() {
-  // body...
-};
 
 SightTracker.prototype.getTiles = function() {
   var tiles = [];
@@ -139,17 +123,12 @@ SightTracker.prototype.getTiles = function() {
 
     if (state.state === "present") {
       tile.hideOverlay = true;
-    } else if (state.state === "absent:known") {
+    } else {
       var respawn_time = state.time + this.respawn - Date.now();
-      tile.content = (respawn_time / 1e3).toFixed(1);
-      if (isNaN(tile.content)) {
-        console.log("NaN found in abs:kn, %s", respawn_time);
-      }
-    } else if (state.state === "absent:unknown") {
-      var respawn_time = state.time + this.respawn - Date.now();
-      tile.content = "<" + (respawn_time / 1e3).toFixed(1);
-      if (isNaN(tile.content)) {
-        console.log("NaN found in abs:unk, %s", respawn_time);
+      if (state.state === "absent:known") {
+        tile.content = (respawn_time / 1e3).toFixed(1);
+      } else if (state.state === "absent:unknown") {
+        tile.content = "< " + (respawn_time / 1e3).toFixed(1);
       }
     }
     tiles.push(tile);

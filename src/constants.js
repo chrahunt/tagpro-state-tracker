@@ -16,5 +16,10 @@ module.exports = {
       inactive: [5.1, 14.1, 15.1],
       id: [5, 14, 15]
     }
+  },
+  RESPAWN: {
+    powerup: 60e3,
+    bomb: 30e3,
+    boost: 10e3
   }
 };

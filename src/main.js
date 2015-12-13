@@ -9,26 +9,34 @@ var SightTracker = require('./sight-tracker');
 TagPro.on("socket", function (state) {
   var powerup_tracker = new PowerupTracker(state.socket);
   var overlay;
-  // delay bomb tracker setup.
-  setTimeout(function bombTrackerSetup() {
+  // delay setup of other tile trackers.
+  setTimeout(function tileTrackerSetup() {
     if (tagpro.map) {
       var bomb_tracker = new SightTracker({
         socket: state.socket,
-        map: tagpro.map
+        map: tagpro.map,
+        tile: "bomb"
+      });
+      var boost_tracker = new SightTracker({
+        socket: state.socket,
+        map: tagpro.map,
+        tile: "boost"
       });
       if (overlay) {
         overlay.addSource(bomb_tracker);
+        overlay.addSource(boost_tracker);
       } else {
-        setTimeout(function addBombTracker() {
+        setTimeout(function addTrackers() {
           if (overlay) {
             overlay.addSource(bomb_tracker);
+            overlay.addSource(boost_tracker);
           } else {
-            setTimeout(addBombTracker, 50);
+            setTimeout(addTrackers, 50);
           }
         }, 50);
       }
     } else {
-      setTimeout(bombTrackerSetup, 50);
+      setTimeout(tileTrackerSetup, 50);
     }
   });
 
