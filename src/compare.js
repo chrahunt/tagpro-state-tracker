@@ -1,20 +1,20 @@
 module.exports = Compare;
 
 /**
- * 
+ * eps should be positive
  */
 function Compare(eps) {
   this.epsilon = eps;
 }
 
 Compare.prototype.gt = function(a, b) {
-  // body...
+  return b - a < this.epsilon;
 };
 
 Compare.prototype.lt = function(a, b) {
-  // body...
+  return a - b < this.epsilon;
 };
 
 Compare.prototype.eq = function(a, b) {
-  // body...
+  return Math.abs(a - b) < this.epsilon;
 };

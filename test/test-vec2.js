@@ -28,9 +28,7 @@ describe("Vec2", function() {
       expect(vec1.y).to.equal(2);
     });
 
-    it("should add a vector and a constant", function () {
-
-    });
+    it("should add a vector and a constant");
 
     it("should return vector after operation");
   });

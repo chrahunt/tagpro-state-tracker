@@ -3,6 +3,7 @@ var TagPro = require('./tagpro');
 var CornerSource = require('./test-tile-source');
 var TileOverlay = require('./tile-overlay');
 var Animate = require('./animate');
+var SightTracker = require('./sight-tracker');
 
 // Logging.
 /*TagPro.on("*", function (state) {
@@ -14,20 +15,41 @@ var Animate = require('./animate');
 
 // Get socket immediately.
 TagPro.on("socket", function (state) {
-  // guard against group games.
-  //if (!state.group) {
-    var tracker = new PowerupTracker(state.socket);
-    window.tracker = tracker;
-    // Initialize overlay when user playing (instead of spectating).
-    TagPro.on("user.playing", function (state) {
-      console.log("User player, starting overlay.");
-      tracker.start();
-      var overlay = new TileOverlay(tracker);
-      Animate(function () {
-        overlay.update();
+  var powerup_tracker = new PowerupTracker(state.socket);
+  var overlay;
+  // delay bomb tracker setup.
+  setTimeout(function bombTrackerSetup() {
+    if (tagpro.map) {
+      var bomb_tracker = new SightTracker({
+        socket: state.socket,
+        map: tagpro.map
       });
+      if (overlay) {
+        overlay.addSource(bomb_tracker);
+      } else {
+        setTimeout(function addBombTracker() {
+          if (overlay) {
+            overlay.addSource(bomb_tracker);
+          } else {
+            setTimeout(addBombTracker, 50);
+          }
+        }, 50);
+      }
+    } else {
+      setTimeout(bombTrackerSetup, 50);
+    }
+  });
+
+  // Initialize overlay when user playing (instead of spectating).
+  TagPro.on("user.playing", function (state) {
+    console.log("User player, starting overlay.");
+    powerup_tracker.start();
+    overlay = new TileOverlay();
+    overlay.addSource(powerup_tracker);
+    Animate(function () {
+      overlay.update();
     });
-  //}
+  });
 });
 
 // test state

@@ -102,7 +102,9 @@ PowerupTracker.prototype._onMap = function(map) {
     };
   });
 
-  this.solver = new Solver(variables);
+  this.solver = new Solver(variables, {
+    debug: true
+  });
 };
 
 PowerupTracker.prototype._onState = function(state, time) {
@@ -161,7 +163,7 @@ PowerupTracker.prototype.start = function() {
       var state = info.state ? "present"
                              : "absent";
       var id = info.location.toString();
-      console.log("Observed %s: %s", id, state);
+      //console.log("Observed %s: %s", id, state);
       self.solver.addObservation(id, state);
     }, 50);
   });
@@ -182,7 +184,7 @@ PowerupTracker.prototype.start = function() {
       var state = info.state ? "present"
                              : "absent";
       var id = info.location.toString();
-      console.log("Observed %s: %s", id, state);
+      //console.log("Observed %s: %s", id, state);
       self.solver.addObservation(info.location.toString(), state);
     }, 50);
   });
@@ -200,7 +202,6 @@ PowerupTracker.prototype.getTiles = function() {
     console.log("States re-created.");
     this.empty = false;
   }
-  var in_view = this.tile_events.getInView();
   var powerups = [];
   // todo: variable spawn time.
   var respawn = 60e3;
@@ -231,14 +232,6 @@ PowerupTracker.prototype.getTiles = function() {
       content: content,
       hideOverlay: powerup.state === "present"
     });
-
-    /*powerups.push({
-      id: variable,
-      location: Vec2.fromString(variable),
-      visible: this.tile_events.in_view.indexOf(variable) !== -1,
-      state: state[variable].state,
-      time: state[variable].time
-    });*/
   }
   return powerups;
 };

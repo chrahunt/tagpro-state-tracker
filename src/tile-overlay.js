@@ -5,10 +5,9 @@ module.exports = TileOverlay;
 
 /**
  * [TileOverlay description]
- * @param {[type]} source [description]
  * @param {[type]} options [description]
  */
-function TileOverlay(source, options) {
+function TileOverlay(options) {
   if (typeof options == "undefined") options = {};
   // offset for indicator frame.
   this.x_visible = 40;
@@ -16,80 +15,95 @@ function TileOverlay(source, options) {
   this.x_indicator_offset = 50;
   this.y_indicator_offset = this.x_indicator_offset;
 
-  this.source = source;
-
-  var tiles = this.source.getTiles();
+  this.sources = [];
 
   // Set up indicator container.
   this.indicator_ui = new PIXI.DisplayObjectContainer();
   tagpro.renderer.layers.ui.addChild(this.indicator_ui);
-  var texture = this._makeIndicatorTexture();
-
   this.indicators = {};
-  var self = this;
-  tiles.forEach(function (tile) {
-    var id = Vec2.toString(tile);
-    var sprite = new PIXI.Sprite(texture);
-    sprite.anchor = new PIXI.Point(0.5, 0.5);
-    self.indicator_ui.addChild(sprite);
-    var t = makeText();
-    self.indicator_ui.addChild(t);
-    sprite.visible = false;
-    t.visible = false;
-    self.indicators[id] = {
-      sprite: sprite,
-      text: t
-    };
-  });
 
   // Set up tile overlay containers.
   this.tile_ui = new PIXI.DisplayObjectContainer();
   tagpro.renderer.layers.foreground.addChild(this.tile_ui);
   this.tile_overlays = {};
-  tiles.forEach(function (tile) {
-    var id = Vec2.toString(tile);
-    var t = makeText();
-    self.tile_ui.addChild(t);
-    self.tile_overlays[id] = {
-      text: t
-    };
-  });
 
   $(window).resize(this._onResize.bind(this));
   this._onResize();
 }
 
-TileOverlay.prototype.update = function() {
-  var tiles = this.source.getTiles();
-  if (!tiles) {
-    return;
+/**
+ * Add a source of tile information.
+ * @param {TileSource} source
+ */
+TileOverlay.prototype.addSource = function(source) {
+  if (this.sources.indexOf(source) !== -1) {
+    throw Error("Source already added.");
+  } else {
+    this.sources.push(source);
+    var sourceId = this.sources.length - 1;
+
+    var tiles = source.getTiles();
+    var texture = this._makeIndicatorTexture();
+    var self = this;
+    tiles.forEach(function (tile) {
+      var id = Vec2.toString(tile);
+      var sprite = new PIXI.Sprite(texture);
+      sprite.anchor = new PIXI.Point(0.5, 0.5);
+      self.indicator_ui.addChild(sprite);
+      var t = makeText();
+      self.indicator_ui.addChild(t);
+      sprite.visible = false;
+      t.visible = false;
+      self.indicators[sourceId + ":" + id] = {
+        sprite: sprite,
+        text: t
+      };
+    });
+
+    tiles.forEach(function (tile) {
+      var id = Vec2.toString(tile);
+      var t = makeText();
+      self.tile_ui.addChild(t);
+      self.tile_overlays[sourceId + ":" + id] = {
+        text: t
+      };
+    });
   }
+};
+
+TileOverlay.prototype.update = function() {
   var offscreen_tiles = [];
   var visible_tiles = [];
-  
   var bounds = this._getBounds();
-  for (var i = 0; i < tiles.length; i++) {
-    var tile = tiles[i];
-    if (this._inBounds(bounds, tile)) {
-      visible_tiles.push(tile);
-    } else {
-      offscreen_tiles.push(tile);
-    }
-  }
 
   var self = this;
+  this.sources.forEach(function (source, sourceId) {
+    var tiles = source.getTiles();
+
+    if (!tiles) {
+      return;
+    }
+    for (var i = 0; i < tiles.length; i++) {
+      var tile = tiles[i];
+      tile.id = sourceId + ":" + Vec2.toString(tile);
+      if (self._inBounds(bounds, tile)) {
+        visible_tiles.push(tile);
+      } else {
+        offscreen_tiles.push(tile);
+      }
+    }
+  });
+
   // Remove indicators for visible tiles.
   visible_tiles.forEach(function (tile) {
-    var id = Vec2.toString(tile);
-    var indicator = self.indicators[id];
+    var indicator = self.indicators[tile.id];
     indicator.text.visible = false;
     indicator.sprite.visible = false;
   });
 
   // Hide overlays for non-visible tiles.
   offscreen_tiles.forEach(function (tile) {
-    var id = Vec2.toString(tile);
-    var overlay = self.tile_overlays[id];
+    var overlay = self.tile_overlays[tile.id];
     overlay.text.visible = false;
   });
 
@@ -101,8 +115,7 @@ TileOverlay.prototype.update = function() {
 TileOverlay.prototype._drawOverlays = function(tiles) {
   for (var i = 0; i < tiles.length; i++) {
     var tile = tiles[i];
-    var id = Vec2.toString(tile);
-    var text = this.tile_overlays[id].text;
+    var text = this.tile_overlays[tile.id].text;
     if (tile.hideOverlay) {
       text.visible = false;
       continue;
@@ -135,8 +148,7 @@ TileOverlay.prototype._drawIndicators = function(tiles) {
 
   for (var i = 0; i < tiles.length; i++) {
     var tile = tiles[i];
-    var id = Vec2.toString(tile);
-    var indicator = this.indicators[id];
+    var indicator = this.indicators[tile.id];
     if (tile.hideIndicator) {
       indicator.sprite.visible = false;
       indicator.text.visible = false;
