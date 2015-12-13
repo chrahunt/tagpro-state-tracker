@@ -1,5 +1,6 @@
 var Vec2 = require('./vec2');
 var Line = require('./line');
+var C = require('./constants');
 
 module.exports = TileOverlay;
 
@@ -9,9 +10,12 @@ module.exports = TileOverlay;
  */
 function TileOverlay(options) {
   if (typeof options == "undefined") options = {};
-  // offset for indicator frame.
+  // Distance from edge of screen where indicator-relevant tile overlays
+  // disappear.
   this.x_visible = 40;
   this.y_visible = this.x_visible;
+  this.x_visible_no_indicator = 0;
+  this.y_visible_no_indicator = this.x_visible_no_indicator;
   this.x_indicator_offset = 50;
   this.y_indicator_offset = this.x_indicator_offset;
 
@@ -74,7 +78,7 @@ TileOverlay.prototype.addSource = function(source) {
 TileOverlay.prototype.update = function() {
   var offscreen_tiles = [];
   var visible_tiles = [];
-  var bounds = this._getBounds();
+  var all_bounds = this._getBounds();
 
   var self = this;
   this.sources.forEach(function (source, sourceId) {
@@ -86,6 +90,8 @@ TileOverlay.prototype.update = function() {
     for (var i = 0; i < tiles.length; i++) {
       var tile = tiles[i];
       tile.id = sourceId + ":" + Vec2.toString(tile);
+      var bounds = tile.hideIndicator ? all_bounds.overlay_only
+                                      : all_bounds.with_indicator;
       if (self._inBounds(bounds, tile)) {
         visible_tiles.push(tile);
       } else {
@@ -130,21 +136,9 @@ TileOverlay.prototype._drawOverlays = function(tiles) {
 };
 
 TileOverlay.prototype._drawIndicators = function(tiles) {
-  var scale = tagpro.renderer.gameContainer.scale.x;
-  var gameContainer = tagpro.renderer.gameContainer;
-  var gameLocation = new Vec2(gameContainer.x, gameContainer.y).divc(-scale);
-  // Convert indicator lines to game coordinates.
-  var indicator_lines = this.indicator_lines.map(function (line) {
-    return line.clone().scale(1 / scale).translate(gameLocation);
-  });
   var viewport = $("#viewport");
-  // Center in-game coordinates.
-  var center = new Vec2(viewport.width(), viewport.height())
-    // Half
-    .divc(2)
-    // Scale
-    .divc(scale)
-    .add(gameLocation);
+  // Center screen coordinates.
+  var center = new Vec2(viewport.width(), viewport.height()).divc(2);
 
   for (var i = 0; i < tiles.length; i++) {
     var tile = tiles[i];
@@ -154,16 +148,15 @@ TileOverlay.prototype._drawIndicators = function(tiles) {
       indicator.text.visible = false;
     } else {
       var draw = false;
-      var loc = new Vec2(tile.x, tile.y);
+      var loc = this._worldToScreen(new Vec2(tile.x, tile.y));
 
       // Line from center to tile.
       var line = new Line(center, loc);
-      for (var j = 0; j < indicator_lines.length; j++) {
-        var indicator_line = indicator_lines[j];
+      for (var j = 0; j < this.indicator_lines.length; j++) {
+        var indicator_line = this.indicator_lines[j];
         var intersection = indicator_line.intersection(line);
         if (intersection) {
           draw = true;
-          intersection.sub(gameLocation).mulc(scale);
           indicator.sprite.x = intersection.x;
           indicator.sprite.y = intersection.y;
           indicator.sprite.rotation = loc.sub(center).angle();
@@ -183,23 +176,48 @@ TileOverlay.prototype._drawIndicators = function(tiles) {
   }
 };
 
-// return [[x1, y1], [x2, y2]] for bounds rectangle of visible area in game coordinates.
-TileOverlay.prototype._getBounds = function() {
-  var scale = tagpro.renderer.gameContainer.scale.x;
+/**
+ * Convert screen coordinate to world coordinate. Alters given vector.
+ * @param {Vec2} v
+ * @return {Vec2} - the altered v
+ */
+TileOverlay.prototype._screenToWorld = function(v) {
   var gameContainer = tagpro.renderer.gameContainer;
+  var scale = gameContainer.scale.x;
   var gameLocation = new Vec2(gameContainer.x, gameContainer.y).divc(-scale);
-  var topleft = new Vec2(0, 0)
-    .addc(this.x_visible)
-    .add(gameLocation);
-  var viewport = $("#viewport");
+  return v.divc(scale).add(gameLocation);
+};
 
-  // Game center.
-  var botright = new Vec2(viewport.width(), viewport.height())
-    // Scale
-    .divc(scale)
-    .add(gameLocation)
-    .subc(this.x_visible);
-  return [ topleft, botright ];
+/**
+ * Convert world coordinates to screen. Alters given vector.
+ * @param {Vec2} v
+ * @return {Vec2} - the altered v
+ */
+TileOverlay.prototype._worldToScreen = function(v) {
+  var gameContainer = tagpro.renderer.gameContainer;
+  var scale = gameContainer.scale.x;
+  var gameLocation = new Vec2(gameContainer.x, gameContainer.y).divc(-scale);
+  return v.sub(gameLocation).mulc(scale);
+};
+
+/**
+ * Return bounds object for world-coordinate objects.
+ * @return {[type]} [description]
+ */
+TileOverlay.prototype._getBounds = function() {
+  // Indicator-relevant bounds:
+  var $viewport = $("#viewport");
+  return {
+    with_indicator: [
+      this._screenToWorld(new Vec2(0, 0). addc(this.x_visible)),
+      this._screenToWorld(
+        new Vec2($viewport.width(), $viewport.height()).subc(this.x_visible))
+    ],
+    overlay_only: [
+      this._screenToWorld(new Vec2(0, 0)).subc(C.TILE_WIDTH),
+      this._screenToWorld(new Vec2($viewport.width(), $viewport.height())).addc(C.TILE_WIDTH)
+    ]
+  };
 };
 
 TileOverlay.prototype._inBounds = function(bounds, p) {
