@@ -11,6 +11,7 @@ function PowerupTracker(socket) {
   var self = this;
   this.socket = socket;
   this.empty = false;
+  this.seen = {};
 
   // handle mapupdate, tile tracking
   // Listen for player powerup grabs.
@@ -20,33 +21,38 @@ function PowerupTracker(socket) {
     var updates = event.u || event;
     var time = Date.now();
     updates.forEach(function (update) {
-      if (update['s-powerups']) {
-        var id = update.id;
-        if (tagpro.players[id] && tagpro.players[id].draw) {
-          // Player is visible, get powerup tile and send observation.
-          var position = new Vec2(tagpro.players[id].x, tagpro.players[id].y);
-          var found = false;
-          for (var i = 0; i < self.powerup_locations.length; i++) {
-            var powerup = self.powerup_locations[i];
-            // TODO: More specific powerup finding location.
-            if (position.dist(powerup) < 40) {
-              var variable = self.powerups[i].toString();
-              self.solver.addObservation(variable, "absent", time);
-              found = true;
-              break;
+      var id = update.id;
+      // skip first update.
+      if (self.seen[id]) {
+        if (update['s-powerups']) {
+          if (tagpro.players[id] && tagpro.players[id].draw) {
+            // Player is visible, get powerup tile and send observation.
+            var position = new Vec2(tagpro.players[id].x, tagpro.players[id].y);
+            var found = false;
+            for (var i = 0; i < self.powerup_locations.length; i++) {
+              var powerup = self.powerup_locations[i];
+              // TODO: More specific powerup finding location.
+              if (position.dist(powerup) < 40) {
+                var variable = self.powerups[i].toString();
+                self.solver.addObservation(variable, "absent", time);
+                found = true;
+                break;
+              }
             }
+            if (!found) {
+              console.error("Couldn't find adjacent powerup!");
+            }
+          } else if (tagpro.players[id]) {
+            // Player not visible, send information.
+            console.log("Sending powerup notification.");
+            self.solver.addNotification({
+              state: "absent",
+              time: time
+            });
           }
-          if (!found) {
-            console.error("Couldn't find adjacent powerup!");
-          }
-        } else if (tagpro.players[id]) {
-          // Player not visible, send information.
-          console.log("Sending powerup notification.");
-          self.solver.addNotification({
-            state: "absent",
-            time: time
-          });
         }
+      } else {
+        self.seen[id] = true;
       }
     });
   });
