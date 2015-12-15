@@ -22,19 +22,19 @@ module.exports = Solver;
  */
 /**
  * @typedef {object} SolverOptions
- * @property {integer} [interval=60e3] - Interval (in ms) after which a variable
- *   changes state back to present.
- * @property {timestamp} [time=Date.now()] - Current time to use for the solver, nonzero.
- *   Used only for testing.
- * @property {boolean} [observedStart=false] - Whether the states given with
- *   the variables should be applied as-is or initialized to unknown.
+ * @property {integer} [interval=60e3] - Interval (in ms) after which a
+ *   variable changes state back to present.
+ * @property {timestamp} [time=Date.now()] - (test only) Current time
+ *   to use for the solver, nonzero.
+ * @property {boolean} [observedStart=false] - (test only) Whether the
+ *   states given with the variables should be used.
  * @property {boolean} [debug=false] - Set debug options, toggles logging
  *   and observation/notification storage.
  */
 /**
  * Solver solves boolean dynamic state. Must have known initial states, even
  * with unknown taken times.
- * @param {Array<Variable>} variables - array of variable names.
+ * @param {Array.<Variable>} variables - array of variable names.
  */
 function Solver(variables, options) {
   if (typeof options == "undefined") options = {};
@@ -48,7 +48,7 @@ function Solver(variables, options) {
   this.variables = {};
   this.states = [];
   var state = {};
-  var time = Date.now();
+  var time = this._time || Date.now();
   var self = this;
 
   variables.forEach(function (variable) {
@@ -59,6 +59,7 @@ function Solver(variables, options) {
     var variable_state = variable.state || "unknown";
     var status = options.observedStart ? variable_state
                                        : "unknown";
+    // interval: insertion
     state[name] = {
       id: name,
       state: status,
@@ -95,26 +96,15 @@ Solver.prototype.setObserved = function(variables) {
 };
 
 /**
- * Represents a general notification that a variable changed, but which
- * changed is unknown.
- * @typedef {object} Notification
- * @property {timestamp} time - the time the notification occurred.
- * @property {string} state - the notifying state, should always be
- *   "absent".
+ * Inform solver that a variable changed.
+ * @param {timestamp} time - when the variable changed.
  */
-/**
- * Transition states based on given hypothesis.
- * @param {Notification} msg - the notification.
- * @throws {Error} If msg has state that is not "absent".
- */
-Solver.prototype.addNotification = function(msg) {
-  if (msg.state !== "absent")
-    throw new Error("Non-absent notification not supported!");
-  this._log("Notified: %d", msg.time);
+Solver.prototype.addNotification = function(time) {
+  this._log("Notified: %d", time);
   this.updateVariables();
   var states = [];
   for (var i = 0; i < this.states.length; i++) {
-    var newStates = this.generateStates(this.states[i], msg);
+    var newStates = this.generateStates(this.states[i], time);
     if (newStates)
       Array.prototype.push.apply(states, newStates);
   }
@@ -126,14 +116,12 @@ Solver.prototype.addNotification = function(msg) {
  * notification that something changed.
  * @private
  * @param {VariableState} state - the state to generate successors for.
- * @param {Notification} msg [description]
+ * @param {timestamp} time - when the change occurred.
  * @return {Array.<VariableState>?} - returns array of successor states,
  *   or null if no successor states were possible.
  */
-Solver.prototype.generateStates = function(state, msg) {
-  msg = clone(msg);
+Solver.prototype.generateStates = function(state, time) {
   var states = [];
-  // Assumes msg.state is always "absent".
   for (var name in state) {
     // Skip observed variables, they could not have been changed.
     if (this.variables[name].observed)
@@ -143,19 +131,20 @@ Solver.prototype.generateStates = function(state, msg) {
 
     if (variable.state === "present") {
       // Change in observed variable true -> false
-      variable.state = msg.state;
+      variable.state = "absent";
+      // intervals: tracking
       variable.intervals.push({
         state: variable.state,
-        start: msg.time,
-        end: msg.time + this._state_change_interval
+        start: time,
+        end: time + this._state_change_interval
       });
     } else if (variable.state === "unknown") {
       // Status of variable not known. Generate possibilities.
-      variable.state = msg.state;
+      variable.state = "absent";
       variable.intervals.push({
         state: variable.state,
-        start: msg.time,
-        end: msg.time + this._state_change_interval
+        start: time,
+        end: time + this._state_change_interval
       });
     } else if (variable.state === "absent") {
       newState = null;
@@ -212,6 +201,7 @@ Solver.prototype.getStateId = function(state) {
                                             : "unobserved";
   } else if (state.state === "absent") {
     id += "absent:";
+    // interval: end_time
     id += state.intervals[state.intervals.length - 1].end === null ? "unknown"
                                                                    : "known";
   } else if (state.state === "unknown") {
@@ -229,6 +219,7 @@ function getObservationId(obs) {
 }
 
 function getChangeTime(v) {
+  // interval: end_time
   return v.intervals[v.intervals.length - 1].end;
 }
 
@@ -242,6 +233,7 @@ Solver.prototype.applyObservation = function(state, observation) {
   var self = this;
   function setPresent(v) {
     v.state = "present";
+    // interval: setting something
     v.intervals.push({
       state: "present",
       start: Date.now(),
@@ -252,12 +244,14 @@ Solver.prototype.applyObservation = function(state, observation) {
     if (typeof time == "undefined") time = null;
     v.state = "absent";
     if (time !== null) {
+      // intervals: setting something
       v.intervals.push({
         state: "absent",
         start: time,
         end: time + self._state_change_interval
       });
     } else {
+      // intervals: setting something
       v.intervals.push({
         state: "absent",
         start: Date.now(),
@@ -401,6 +395,7 @@ Solver.prototype.getState = function() {
           state: variable.state
         };
       } else {
+        // intervals, end time
         var time = variable.intervals[variable.intervals.length - 1].end;
         out[name] = {
           state: variable.state,
@@ -419,6 +414,7 @@ Solver.prototype.getState = function() {
           if (out_variable.state === "absent") {
             // TODO: check undefined in case interval not updated?
             // Get end of most recent applicable interval.
+            // intervals: end_time
             var change = variable.intervals[variable.intervals.length - 1].end;
             if (out_variable.time instanceof Array) {
               if (out_variable.time.indexOf(change) === -1) {
@@ -477,6 +473,7 @@ Solver.prototype.updateVariables = function() {
       } else if (variable.state === "unknown") {
         if (variable.intervals.length > 0) {
           var last = variable.intervals[variable.intervals.length - 1];
+          // interval: start_time
           var end = last.start + this._state_change_interval;
           if (end <= time) {
             variable.state = "present";

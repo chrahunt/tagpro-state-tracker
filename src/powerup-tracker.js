@@ -45,10 +45,7 @@ function PowerupTracker(socket) {
           } else if (tagpro.players[id]) {
             // Player not visible, send information.
             console.log("Sending powerup notification.");
-            self.solver.addNotification({
-              state: "absent",
-              time: time
-            });
+            self.solver.addNotification(time);
           }
         }
       } else {

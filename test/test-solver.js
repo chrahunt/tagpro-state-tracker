@@ -43,17 +43,6 @@ describe('Solver', function() {
     expect(update).to.throw(Error);
   });
 
-  it("cannot accept notification that is not \"absent\"", function() {
-    var solver = allTrueInit();
-    var update = function() {
-      solver.addNotification({
-        state: false,
-        time: t
-      });
-    };
-    expect(update).to.throw(Error);
-  });
-
   it("cannot accept update that is not one of \"absent\" or \"present\"", function() {
     var solver = allTrueInit();
     var update = function() {
@@ -80,10 +69,7 @@ describe('Solver', function() {
     var solver = allTrueInit();
     solver.setObserved([p_1, p_2]);
     solver._time = t + 5e3;
-    solver.addNotification({
-      state: "absent",
-      time: t + 5e3
-    });
+    solver.addNotification(t + 5e3);
 
     var result = solver.getState();
     expect(result[p_1].state).to.equal("present");
@@ -99,10 +85,7 @@ describe('Solver', function() {
     solver._time = t - 15e3;
     solver.setObserved([p_1]);
     solver._time = t;
-    solver.addNotification({
-      state: "absent",
-      time: t
-    });
+    solver.addNotification(t);
 
     var result = solver.getState();
 
@@ -150,10 +133,7 @@ describe('Solver', function() {
     solver.addObservation(p_1, "absent", t - 30e3);
     solver.setObserved([]);
     solver._time = t;
-    solver.addNotification({
-      state: "absent",
-      time: t
-    });
+    solver.addNotification(t);
     var result = solver.getState();
     expect(result[p_1].state).to.equal("absent");
     expect(result[p_1].time).to.equal(t + 30e3);
@@ -181,10 +161,7 @@ describe('Solver', function() {
     solver.addObservation(p_1, "absent", t - 30e3);
     solver.setObserved([]);
     solver._time = t;
-    solver.addNotification({
-      state: "absent",
-      time: t
-    });
+    solver.addNotification(t);
     // Observation that resolves ambiguity.
     solver.setObserved([p_2]);
     solver._time = t + 1;
@@ -200,20 +177,11 @@ describe('Solver', function() {
   it("should resolve ambiguous situations when enough time passes", function() {
     var solver = allTrueInit();
     solver._time = t;
-    solver.addNotification({
-      state: "absent",
-      time: t
-    });
+    solver.addNotification(t);
     solver._time = t + 5e3;
-    solver.addNotification({
-      state: "absent",
-      time: t + 5e3
-    });
+    solver.addNotification(t + 5e3);
     solver._time = t + 10e3;
-    solver.addNotification({
-      state: "absent",
-      time: t + 10e3
-    });
+    solver.addNotification(t + 10e3);
     solver._time = t + 75e3;
     var result = solver.getState();
     expect(result[p_1].state).to.equal("present");
@@ -259,10 +227,7 @@ describe('Solver', function() {
       });
       solver.setObserved([p_1]);
       solver._time = t + 5e3;
-      solver.addNotification({
-        state: "absent",
-        time: t + 5e3
-      });
+      solver.addNotification(t + 5e3);
       solver.setObserved([p_2]);
       solver._time = t + 10e3;
       solver.addObservation(p_2, "present");
