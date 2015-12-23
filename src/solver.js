@@ -59,16 +59,11 @@ function Solver(variables, options) {
     var variable_state = variable.state || "unknown";
     var status = options.observedStart ? variable_state
                                        : "unknown";
-    // interval: insertion
     state[name] = {
       id: name,
       state: status,
-      intervals: [{
-        state: status,
-        start: time,
-        observed: false,
-        end: null
-      }]
+      start: time,
+      end: null
     };
   });
   this.states.push(state);
@@ -132,20 +127,13 @@ Solver.prototype.generateStates = function(state, time) {
     if (variable.state === "present") {
       // Change in observed variable true -> false
       variable.state = "absent";
-      // intervals: tracking
-      variable.intervals.push({
-        state: variable.state,
-        start: time,
-        end: time + this._state_change_interval
-      });
+      variable.start = time;
+      variable.end = time + this._state_change_interval;
     } else if (variable.state === "unknown") {
       // Status of variable not known. Generate possibilities.
       variable.state = "absent";
-      variable.intervals.push({
-        state: variable.state,
-        start: time,
-        end: time + this._state_change_interval
-      });
+      variable.start = time;
+      variable.end = time + this._state_change_interval;
     } else if (variable.state === "absent") {
       newState = null;
       // already taken?
@@ -201,9 +189,8 @@ Solver.prototype.getStateId = function(state) {
                                             : "unobserved";
   } else if (state.state === "absent") {
     id += "absent:";
-    // interval: end_time
-    id += state.intervals[state.intervals.length - 1].end === null ? "unknown"
-                                                                   : "known";
+    id += state.end === null ? "unknown"
+                             : "known";
   } else if (state.state === "unknown") {
     id += "unknown";
   }
@@ -219,8 +206,7 @@ function getObservationId(obs) {
 }
 
 function getChangeTime(v) {
-  // interval: end_time
-  return v.intervals[v.intervals.length - 1].end;
+  return v.end;
 }
 
 /**
@@ -233,30 +219,18 @@ Solver.prototype.applyObservation = function(state, observation) {
   var self = this;
   function setPresent(v) {
     v.state = "present";
-    // interval: setting something
-    v.intervals.push({
-      state: "present",
-      start: Date.now(),
-      end: null
-    });
+    v.start = Date.now();
+    v.end = null;
   }
   function setAbsent(v, time) {
     if (typeof time == "undefined") time = null;
     v.state = "absent";
     if (time !== null) {
-      // intervals: setting something
-      v.intervals.push({
-        state: "absent",
-        start: time,
-        end: time + self._state_change_interval
-      });
+      v.start = time;
+      v.end = time + self._state_change_interval;
     } else {
-      // intervals: setting something
-      v.intervals.push({
-        state: "absent",
-        start: Date.now(),
-        end: null
-      });
+      v.start = Date.now();
+      v.end = null;
     }
   }
   var Actions = {
@@ -396,7 +370,7 @@ Solver.prototype.getState = function() {
         };
       } else {
         // intervals, end time
-        var time = variable.intervals[variable.intervals.length - 1].end;
+        var time = variable.end;
         out[name] = {
           state: variable.state,
           time: time
@@ -415,7 +389,7 @@ Solver.prototype.getState = function() {
             // TODO: check undefined in case interval not updated?
             // Get end of most recent applicable interval.
             // intervals: end_time
-            var change = variable.intervals[variable.intervals.length - 1].end;
+            var change = variable.end;
             if (out_variable.time instanceof Array) {
               if (out_variable.time.indexOf(change) === -1) {
                 out_variable.time.push(change);
@@ -453,36 +427,22 @@ Solver.prototype.updateVariables = function() {
 
       // Update changeback.
       if (variable.state === "absent") {
-        if (variable.intervals.length > 0) {
-          var last = variable.intervals[variable.intervals.length - 1];
-          if (last.end && last.end <= time) {
-            // update to true.
-            variable.state = "present";
-            variable.intervals.push({
-              state: "present",
-              start: time,
-              end: null
-            });
-
-          } else if (last.end === null) {
-            // Near beginning of experiment, unknown variable that does not have
-            // a known end time. Create a new state with a different variable that is present
-            // for naive approach.
-          }
+        if (variable.end && variable.end <= time) {
+          // update to true.
+          variable.state = "present";
+          variable.start = time;
+          variable.end = null;
+        } else if (variable.end === null) {
+          // Near beginning of experiment, unknown variable that does not have
+          // a known end time. Create a new state with a different variable that is present
+          // for naive approach.
         }
       } else if (variable.state === "unknown") {
-        if (variable.intervals.length > 0) {
-          var last = variable.intervals[variable.intervals.length - 1];
-          // interval: start_time
-          var end = last.start + this._state_change_interval;
-          if (end <= time) {
-            variable.state = "present";
-            variable.intervals.push({
-              state: "present",
-              start: time,
-              end: null
-            });
-          }
+        var end = variable.start + this._state_change_interval;
+        if (end <= time) {
+          variable.state = "present";
+          variable.start = time;
+          variable.end = null;
         }
       }
     }
