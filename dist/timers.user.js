@@ -1031,6 +1031,102 @@ function hasOwnProperty(obj, prop) {
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
 },{"./support/isBuffer":4,"_process":3,"inherits":2}],6:[function(require,module,exports){
+module.exports = Animate;
+
+/**
+ * Run provided function in animation frame.
+ * @param {Function} fn - Function to be executed.
+ * @param {boolean} [start=true] - Whether to start the animation loop.
+ */
+function Animate(fn, start) {
+  if (!(this instanceof Animate))
+    return new Animate(fn, start);
+  if (typeof start == "undefined") start = true;
+  this.stopped = !start;
+  this.fn = fn;
+  if (!this.stopped) {
+    this._loop();
+  }
+}
+
+/**
+ * Loop execute the function.
+ * @private
+ */
+Animate.prototype._loop = function() {
+  if (!this.stopped) {
+    requestAnimationFrame(this._loop.bind(this));
+    this.fn();
+  }
+};
+
+/**
+ * Start the animation loop, if not done already.
+ */
+Animate.prototype.start = function() {
+  if (this.stopped) {
+    this.stopped = false;
+    this._loop();
+  }
+};
+
+/**
+ * Stop the animation, 
+ */
+Animate.prototype.stop = function() {
+  this.stopped = true;
+};
+
+},{}],7:[function(require,module,exports){
+module.exports = Compare;
+
+/**
+ * eps should be positive
+ */
+function Compare(eps) {
+  this.epsilon = eps;
+}
+
+Compare.prototype.gt = function(a, b) {
+  return b - a < this.epsilon;
+};
+
+Compare.prototype.lt = function(a, b) {
+  return a - b < this.epsilon;
+};
+
+Compare.prototype.eq = function(a, b) {
+  return Math.abs(a - b) < this.epsilon;
+};
+
+},{}],8:[function(require,module,exports){
+module.exports = {
+  TILE_WIDTH: 40,
+  TILES: {
+    powerup: {
+      active: [6.1, 6.2, 6.3, 6.4],
+      inactive: [6],
+      id: [6]
+    },
+    bomb: {
+      active: [10],
+      inactive: [10.1],
+      id: [10]
+    },
+    boost: {
+      active: [5, 14, 15],
+      inactive: [5.1, 14.1, 15.1],
+      id: [5, 14, 15]
+    }
+  },
+  RESPAWN: {
+    powerup: 60e3,
+    bomb: 30e3,
+    boost: 10e3
+  }
+};
+
+},{}],9:[function(require,module,exports){
 var Point = require("./vec2");
 
 /**
@@ -1038,9 +1134,9 @@ var Point = require("./vec2");
  * polygons. Can be called 2 ways.
  * @constructor
  * @example <caption>Constructing from Point objects.</caption>
- *   var e = new Edge(p1, p2)
+ *   var e = new Line(p1, p2)
  * @example <caption>From an array of values.</caption>
- *   var e = new Edge([x1, y1, x2, y2])
+ *   var e = new Line([x1, y1, x2, y2])
  */
 function Line(p1, p2) {
   if (Array.isArray(p1)) {
@@ -1055,6 +1151,9 @@ function Line(p1, p2) {
 
 module.exports = Line;
 
+/**
+ * @private
+ */
 Line.prototype._CCW = function(p1, p2, p3) {
   a = p1.x; b = p1.y;
   c = p2.x; d = p2.y;
@@ -1083,10 +1182,10 @@ Line.prototype.intersects = function(line) {
  *   do not intersect or if colinear.
  */
 Line.prototype.intersection = function(line) {
-  var p = this.p1.clone(),
-      r = this.p2.sub(this.p1, true),
-      q = line.p1.clone(),
-      s = line.p2.sub(line.p1, true);
+  var p = this.p1.c(),
+      r = this.p2.c().sub(this.p1),
+      q = line.p1.c(),
+      s = line.p2.c().sub(line.p1);
   var denominator = r.cross(s);
   if (denominator !== 0) {
     q.sub(p);
@@ -1111,7 +1210,7 @@ Line.prototype.intersection = function(line) {
  */
 Line.prototype.translate = function(v, returnNew) {
   if (returnNew) {
-    return new Line(this.p1.add(v, true), this.p2.add(v, true));
+    return new Line(this.p1.c().add(v), this.p2.c().add(v));
   } else {
     this.p1.add(v);
     this.p2.add(v);
@@ -1124,355 +1223,104 @@ Line.prototype.translate = function(v, returnNew) {
  * @param {number} c - Value to scale edge points by.
  * @return {Line} - The scaled edge.
  */
-Line.prototype.scale = function(c, returnNew) {
-  if (returnNew) {
-    return new Line(this.p1.mulc(c, true), this.p2.mulc(c, true));
-  } else {
-    this.p1.mulc(c);
-    this.p2.mulc(c);
-    return this;
-  }
+Line.prototype.scale = function(c) {
+  this.p1.mulc(c);
+  this.p2.mulc(c);
+  return this;
 };
 
 Line.prototype.clone = function() {
-  return new Line(this.p1.clone(), this.p2.clone());
+  return new Line(this.p1.c(), this.p2.c());
 };
 
-},{"./vec2":13}],7:[function(require,module,exports){
+},{"./vec2":18}],10:[function(require,module,exports){
 var PowerupTracker = require('./powerup-tracker');
-var Overlay = require('./overlay');
 var TagPro = require('./tagpro');
-
-// Logging.
-/*TagPro.on("*", function (state) {
-  console.log("State: %s.", JSON.stringify(state));
-});*/
-
-var tracker;
+var CornerSource = require('./test-tile-source');
+var TileOverlay = require('./tile-overlay');
+var Animate = require('./animate');
+var SightTracker = require('./sight-tracker');
 
 // Get socket immediately.
 TagPro.on("socket", function (state) {
-  // guard against group games.
-  //if (!state.group) {
-    tracker = new PowerupTracker(state.socket);
-    // Initialize overlay when user playing.
-    TagPro.on("user.playing", function (state) {
-      var overlay = new Overlay(tracker);
+  var powerup_tracker = new PowerupTracker(state.socket);
+  var overlay;
+  // delay setup of other tile trackers.
+  setTimeout(function tileTrackerSetup() {
+    if (tagpro.map) {
+      var bomb_tracker = new SightTracker({
+        socket: state.socket,
+        map: tagpro.map,
+        tile: "bomb"
+      });
+      var boost_tracker = new SightTracker({
+        socket: state.socket,
+        map: tagpro.map,
+        tile: "boost"
+      });
+      if (overlay) {
+        overlay.addSource(bomb_tracker);
+        overlay.addSource(boost_tracker);
+      } else {
+        setTimeout(function addTrackers() {
+          if (overlay) {
+            overlay.addSource(bomb_tracker);
+            overlay.addSource(boost_tracker);
+          } else {
+            setTimeout(addTrackers, 50);
+          }
+        }, 50);
+      }
+    } else {
+      setTimeout(tileTrackerSetup, 50);
+    }
+  });
+
+  // Initialize overlay when user playing (instead of spectating).
+  TagPro.on("user.playing", function (state) {
+    console.log("User player, starting overlay.");
+    powerup_tracker.start();
+    overlay = new TileOverlay();
+    overlay.addSource(powerup_tracker);
+    Animate(function () {
+      overlay.update();
     });
-  //}
+  });
 });
 
-},{"./overlay":8,"./powerup-tracker":9,"./tagpro":11}],8:[function(require,module,exports){
-var Vec2 = require('./vec2');
-var Line = require('./line');
-
-var TILE_WIDTH = 40;
-var Utils = {
-  makeText: function (color) {
-    if (typeof color == 'undefined') color = "#FFFFFF";
-    var text = new PIXI.Text("", {
-        font: "bold 10pt Arial",
-        fill: color,
-        stroke: "#000000",
-        strokeThickness: 3,
-        align: "center"
-    });
-    text.anchor = new PIXI.Point(0.5, 0.5);
-    text.visible = false;
-    return text;
-  }
-};
-
-// Various drawings.
-// Drawing has properties init, update, hide, show.
-var drawings = [
-  { // Powerups.
-    init: function (tracker) {
-      console.log("Initializing powerup overlay.");
-      this.tracker = tracker;
-      
-      // TODO: no hard code
-      this.powerup_respawn = 60e3;
-      var powerups = this.tracker.getPowerups();
-      this.debug = new PIXI.Graphics();
-      tagpro.renderer.gameContainer.addChild(this.debug);
-      this._initIndicators(powerups);
-      this._initTiles(powerups);
-    },
-    // Initialize window side indicators.
-    _initIndicators: function (powerups) {
-      // Offset of indicators from side of window.
-      this.indicator_offset = 50;
-      this.indicator_ui = new PIXI.DisplayObjectContainer();
-      tagpro.renderer.layers.ui.addChild(this.indicator_ui);
-      var texture = this._getIndicatorTexture();
-
-      this.indicators = {};
-      powerups.forEach(function (powerup) {
-        var sprite = new PIXI.Sprite(texture);
-        sprite.anchor = new PIXI.Point(0.5, 0.5);
-        this.indicator_ui.addChild(sprite);
-        var t = Utils.makeText();
-        this.indicator_ui.addChild(t);
-        this.indicators[powerup.id] = {
-          sprite: sprite,
-          text: t
-        };
-      }, this);
-      $("#viewport").resize(this._onResize.bind(this));
-      this._onResize();      
-    },
-    // Initialize tile overlays.
-    _initTiles: function (powerups) {
-      this.tile_ui = new PIXI.DisplayObjectContainer();
-      tagpro.renderer.layers.foreground.addChild(this.tile_ui);
-      this.tile_overlays = {};
-      powerups.forEach(function (powerup) {
-        var t = Utils.makeText();
-        this.tile_ui.addChild(t);
-        this.tile_overlays[powerup.id] = {
-          text: t
-        };
-      }, this);
-    },
-    // Function called on viewport resize.
-    _onResize: function () {
-      var viewport = $("#viewport");
-      this.indicator_lines = [];
-      // Top.
-      this.indicator_lines.push(new Line([
-        this.indicator_offset, this.indicator_offset,
-        viewport.width() - this.indicator_offset, this.indicator_offset
-      ]));
-      // Right.
-      this.indicator_lines.push(new Line([
-        viewport.width() - this.indicator_offset, this.indicator_offset,
-        viewport.width() - this.indicator_offset, viewport.height() - this.indicator_offset
-      ]));
-      // Bottom.
-      this.indicator_lines.push(new Line([
-        viewport.width() - this.indicator_offset, viewport.height() - this.indicator_offset,
-        this.indicator_offset, viewport.height() - this.indicator_offset
-      ]));
-      // Left.
-      this.indicator_lines.push(new Line([
-        this.indicator_offset, viewport.height() - this.indicator_offset,
-        this.indicator_offset, this.indicator_offset
-      ]));
-    },
-    update: function () {
-      var powerups = this.tracker.getPowerups();
-      var visible_powerups = [];
-      var offscreen_powerups = [];
-      for (var i = 0; i < powerups.length; i++) {
-        var powerup = powerups[i];
-        // TODO: Limit to tile visibility by player.
-        if (powerup.visible) {
-          visible_powerups.push(powerup);
-        } else {
-          offscreen_powerups.push(powerup);
-        }
-      }
-      visible_powerups.forEach(this._hideIndicator, this);
-      offscreen_powerups.forEach(this._hideTileOverlay, this);
-      this._drawIndicators(offscreen_powerups);
-      this._drawTileOverlays(visible_powerups);
-    },
-    // Draw indicators for off-screen powerups.
-    _drawIndicators: function (powerups) {
-      var scale = tagpro.renderer.gameContainer.scale.x;
-      var gameContainer = tagpro.renderer.gameContainer;
-      var gameLocation = new Vec2(gameContainer.x, gameContainer.y).divc(-scale);
-      // Convert indicator lines to game coordinates.
-      var indicator_lines = this.indicator_lines.map(function (line) {
-        return line.clone().scale(1 / scale).translate(gameLocation);
-      });
-      var viewport = $("#viewport");
-      // Center in game coordinates.
-      var center = new Vec2(viewport.width(), viewport.height())
-        .divc(2)
-        .divc(scale)
-        .add(gameLocation);
-
-      for (var i = 0; i < powerups.length; i++) {
-        var powerup = powerups[i];
-        var indicator = this.indicators[powerup.id];
-        if (powerup.visible) {
-          // TODO: maybe change the buffer a little here.
-          indicator.sprite.visible = false;
-        } else {
-          // Get text for indicator.
-          var text;
-          if (powerup.state) {
-            // TODO: Icon if value known.
-            text = "!";
-          } else {
-            if (Array.isArray(powerup.time)) {
-              // TODO: Handle multiple possibilities.
-              text = "?";
-            } else {
-              var respawn_time = powerup.time && powerup.time - Date.now();
-              if (respawn_time && respawn_time > 0) {
-                text = (respawn_time / 1e3).toFixed(1);
-              } else {
-                text = "?";
-              }
-            }
-          }
-          var draw = false;
-          var loc = powerup.location.mulc(TILE_WIDTH, true).addc(TILE_WIDTH / 2);
-          // Line from center to tile.
-          var line = new Line(center, loc);
-          for (var j = 0; j < indicator_lines.length; j++) {
-            var indicator_line = indicator_lines[j];
-            var intersection = indicator_line.intersection(line);
-            if (intersection) {
-              draw = true;
-              intersection.sub(gameLocation).mulc(scale);
-              indicator.sprite.x = intersection.x;
-              indicator.sprite.y = intersection.y;
-              indicator.sprite.rotation = loc.sub(center).angle();
-              indicator.text.x = intersection.x;
-              indicator.text.y = intersection.y;
-              indicator.text.setText(text);
-              break;
-            }
-          }
-
-          if (!draw) {
-            console.error("Error finding overlay position for powerup indicator.");
-          } else {
-            indicator.sprite.visible = true;
-            indicator.text.visible = true;
-          }
-        }
-      }
-    },
-    // Get indicator texture for sprite.
-    _getIndicatorTexture: function () {
-      var g = new PIXI.Graphics();
-      g.clear();
-      g.lineStyle(1, 0xffffff, 0.9);
-      var indicator_size = 18;
-      var container_size = indicator_size * 2 + 10 * 2;
-      // Circle.
-      g.beginFill(0xFFFFFF, 0.9);
-      g.drawCircle(container_size / 2, container_size / 2, indicator_size);
-      // Pointer.
-      var triangle_size = 6;
-      var pointer_base = container_size / 2 + indicator_size;
-      g.drawShape(new PIXI.Polygon([
-        pointer_base, container_size / 2 - triangle_size / 2,
-        pointer_base + triangle_size, container_size / 2,
-        pointer_base, container_size / 2 + triangle_size / 2,
-        pointer_base, container_size / 2 - triangle_size / 2,
-      ]));
-      g.endFill();
-      // Invisible line so generated texture is centered on circle.
-      g.lineStyle(0, 0, 0);
-      g.moveTo(10, container_size / 2);
-      g.lineTo(10 - triangle_size, container_size / 2);
-      return g.generateTexture();
-    },
-    // Hide indicator.
-    _hideIndicator: function (powerup) {
-      var indicator = this.indicators[powerup.id];
-      indicator.text.visible = false;
-      indicator.sprite.visible = false;
-    },
-    // Draw overlays on visible powerups.
-    _drawTileOverlays: function (powerups) {
-      for (var i = 0; i < powerups.length; i++) {
-        var powerup = powerups[i];
-        var text = this.tile_overlays[powerup.id].text;
-        if (powerup.state) {
-          text.visible = false;
-          continue;
-        } else {
-          var loc = powerup.location.mulc(TILE_WIDTH, true).addc(TILE_WIDTH / 2);
-          text.visible = true;
-          text.x = loc.x;
-          text.y = loc.y;
-          var respawn_time = powerup.time && powerup.time - Date.now();
-          if (respawn_time && respawn_time > 0) {
-            text.setText((respawn_time / 1e3).toFixed(1));
-          } else {
-            // TODO: Show range/estimated time.
-            text.setText("?");
-          }
-        }
-      }
-    },
-    // Hide overlay.
-    _hideTileOverlay: function (powerup) {
-      var tile_overlay = this.tile_overlays[powerup.id];
-      tile_overlay.text.visible = false;
-    },
-    show: function () {
-
-    },
-    hide: function () {
-      // Reset so we see state again.
-      this.logged = false;
+// test state
+/*TagPro.on("user.playing", function (state) {
+  setTimeout(function init() {
+    if (!tagpro.map) {
+      setTimeout(init, 50);
+      return;
     }
-  }
-];
+    var corners = new CornerSource(tagpro.map);
+    var overlay = new TileOverlay(corners);
+    window.overlay = overlay;
 
-/**
- * Visual overlay to display real-time state over the game.
- */
-function Overlay(pup_tracker) {
-  this.tracker = pup_tracker;
-  drawings.forEach(function (drawing) {
-    drawing.init(this.tracker);
-  }, this);
-  this.showing = false;
-  this.disabled = false;
-  this.update();
-}
-module.exports = Overlay;
-
-// Interval to check/update vectors.
-Overlay.prototype.update = function() {
-  if (this.disabled) {
-    drawings.forEach(function (drawing) {
-      drawing.hide();
+    Animate(function () {
+      overlay.update();
     });
-    this.showing = false;
-  } else {
-    requestAnimationFrame(this.update.bind(this));
-    if (!this.showing) {
-      this.showing = true;
-      drawings.forEach(function (drawing) {
-        drawing.show();
-      });
-    }
-    drawings.forEach(function draw(drawing) {
-      drawing.update();
-    });
-  }
-};
+  }, 50);
+});*/
 
-Overlay.prototype.disable = function() {
-  this.disabled = true;
-};
-
-Overlay.prototype.enable = function() {
-  this.disabled = false;
-  this.update();
-};
-
-},{"./line":6,"./vec2":13}],9:[function(require,module,exports){
+},{"./animate":6,"./powerup-tracker":11,"./sight-tracker":12,"./tagpro":14,"./test-tile-source":15,"./tile-overlay":17}],11:[function(require,module,exports){
 var Solver = require('./solver');
 var TileEvents = require('./tile-events');
 var Vec2 = require('./vec2');
+var C = require('./constants');
 
-var TILE_WIDTH = 40;
+module.exports = PowerupTracker;
 
 // Interface that takes in source information and puts it into solver format.
+// Must be initialized with socket prior to "map" and "time" events in initialization.
 function PowerupTracker(socket) {
   var self = this;
   this.socket = socket;
+  this.empty = false;
+  this.seen = {};
+
   // handle mapupdate, tile tracking
   // Listen for player powerup grabs.
   socket.on('p', function (event) {
@@ -1481,35 +1329,35 @@ function PowerupTracker(socket) {
     var updates = event.u || event;
     var time = Date.now();
     updates.forEach(function (update) {
-      if (update['s-powerups']) {
-        var id = update.id;
-        if (tagpro.players[id].draw) {
-          // Player is visible, get powerup tile and send observation.
-          var position = new Vec2(tagpro.players[id].x, tagpro.players[id].y);
-          var found = false;
-          for (var i = 0; i < self.powerup_locations.length; i++) {
-            var powerup = self.powerup_locations[i];
-            // TODO: More specific powerup finding location.
-            if (position.dist(powerup) < 40) {
-              self.solver.addObservation({
-                time: time,
-                state: false,
-                variable: self.powerups[i].toString()
-              });
-              found = true;
-              break;
+      var id = update.id;
+      // skip first update.
+      if (self.seen[id]) {
+        if (update['s-powerups']) {
+          if (tagpro.players[id] && tagpro.players[id].draw) {
+            // Player is visible, get powerup tile and send observation.
+            var position = new Vec2(tagpro.players[id].x, tagpro.players[id].y);
+            var found = false;
+            for (var i = 0; i < self.powerup_locations.length; i++) {
+              var powerup = self.powerup_locations[i];
+              // TODO: More specific powerup finding location.
+              if (position.dist(powerup) < 40) {
+                var variable = self.powerups[i].toString();
+                self.solver.addObservation(variable, "absent", time);
+                found = true;
+                break;
+              }
             }
+            if (!found) {
+              console.error("Couldn't find adjacent powerup!");
+            }
+          } else if (tagpro.players[id]) {
+            // Player not visible, send information.
+            console.log("Sending powerup notification.");
+            self.solver.addNotification(time);
           }
-          if (!found) {
-            console.error("Couldn't find adjacent powerup!");
-          }
-        } else {
-          // Player not visible, send information.
-          self.solver.addHypothesis({
-            state: false,
-            time: time
-          });
         }
+      } else {
+        self.seen[id] = true;
       }
     });
   });
@@ -1517,125 +1365,332 @@ function PowerupTracker(socket) {
   this.powerups = [];
   this.powerup_locations = [];
 
-  // Do map-related initializations.
-  socket.on('map', function (map) {
-    // Actual map values.
-    map = map.tiles;
-
-    var present = [];
-    // Get powerup tiles.
-    map.forEach(function (row, x) {
-      row.forEach(function (tile, y) {
-        if (Math.floor(tile) !== 6) return;
-        var powerup = new Vec2(x, y);
-        self.powerups.push(powerup);
-        present.push(tile == 6);
-        self.powerup_locations.push(powerup.mulc(TILE_WIDTH, true));
-      });
+  if (tagpro.map || tagpro.gameEndsAt || tagpro.id) {
+    console.warn("Post-initialization start, %o:%o:%o", tagpro.map, tagpro.state, tagpro.id);
+    this._onMap({
+      tiles: tagpro.map
     });
+    if (tagpro.state === 1 && tagpro.gameEndsAt === null) {
+      socket.on("time", this._onTime.bind(this));
+    } else if (tagpro.state !== 1 && tagpro.gameEndsAt === null) {
+      console.error("Game ended.");
+    } else {
+      this._onState(tagpro.state, tagpro.gameEndsAt - Date.now());
+    }
+  } else {
+    // Do map-related initializations.
+    socket.on('map', this._onMap.bind(this));
 
-    var variables = self.powerups.map(function (powerup, i) {
-      return {
-        name: powerup.toString(),
-        present: present[i]
-      };
-    });
+    // Updates the state of the game, occurs almost immediately after `map` message.
+    socket.on("time", this._onTime.bind(this));
+  }
+}
 
-    self.solver = new Solver(variables);
-    self.tile_events = new TileEvents({
-      tile: "powerup",
-      map: map,
-      socket: self.socket
-    });
-    self.tile_events.on("tile.enter", function (info) {
-      self.solver.setObserved(self.tile_events.getInView());
-      // Delay and assert fact to rule out states.
-      setTimeout(function () {
-        self.solver.addAssertion({
-          variable: info.location.toString(),
-          state: info.state
-        });
-      }, 20);
-    });
+PowerupTracker.prototype._onMap = function(map) {
+  // Actual map values.
+  map = map.tiles;
+  this.map = map;
+  var self = this;
 
-    self.tile_events.on("tile.leave", function (info) {
-      self.solver.setObserved(self.tile_events.getInView());
-    });
-
-    self.tile_events.on("tile.update", function (info) {
-      setTimeout(function () {
-        self.solver.addAssertion({
-          variable: info.location.toString(),
-          state: info.state
-        });
-      }, 20);
+  var present = [];
+  // Get powerup tiles.
+  map.forEach(function (row, x) {
+    row.forEach(function (tile, y) {
+      if (Math.floor(tile) !== 6) return;
+      var powerup = new Vec2(x, y);
+      self.powerups.push(powerup);
+      present.push(tile == 6);
+      self.powerup_locations.push(powerup.c().mulc(C.TILE_WIDTH));
     });
   });
-}
-module.exports = PowerupTracker;
 
-// TODO: Initialization and state management in case solver goes crazy.
+  // Initialize solver to unknown state.
+  // Game not started, assume map is true representation of powerup state.
+  var variables = this.powerups.map(function (powerup, i) {
+    return {
+      name: powerup.toString(),
+      present: present[i]
+    };
+  });
 
-PowerupTracker.prototype.getPowerups = function() {
+  this.solver = new Solver(variables, {
+    debug: true
+  });
+};
+
+PowerupTracker.prototype._onState = function(state, time) {
+  if (state === 3 && time > 2000) {
+    // Game not started and game start not close enough to be less
+    // than socket timeout, then assume map is true representation
+    // of powerup state.
+    var variables = this.powerups.map(function (powerup, i) {
+      return powerup.toString();
+    });
+
+    this.solver.setObserved(variables);
+    var self = this;
+    variables.forEach(function (variable) {
+      self.solver.addObservation(variable, "present");
+    });
+    this.solver.setObserved([]);
+  } else if (state === 1) {
+    // Game active, don't trust map data. Let tile events naturally
+    // figure out values.
+    console.warn("Post game-start initialization not supported.");
+  }
+};
+
+PowerupTracker.prototype._onTime = function(info) {
+  console.log("Got game state: %d", info.state);
+  this.socket.off("time", this._onTime);
+
+  this._onState(info.state, info.time);
+};
+
+/**
+ * Start the powerup tracker, initializes the tile-tracking subsystem.
+ * Must be started after id and player information are available, after player has been determined to be playing.
+ * And after solver initialization.
+ */
+PowerupTracker.prototype.start = function() {
+  console.log("Initializing tile events.");
+  this.tile_events = new TileEvents({
+    tile: "powerup",
+    map: this.map,
+    socket: this.socket
+  });
+
+  var self = this;
+  this.tile_events.on("tile.enter", function (info) {
+    self.solver.setObserved(self.tile_events.getInView());
+    // Delay and assert fact to rule out states.
+    /*setTimeout(function () {
+      self.solver.addAssertion({
+        variable: info.location.toString(),
+        state: info.state
+      });
+    }, 20);*/
+    setTimeout(function () {
+      var state = info.state ? "present"
+                             : "absent";
+      var id = info.location.toString();
+      //console.log("Observed %s: %s", id, state);
+      self.solver.addObservation(id, state);
+    }, 50);
+  });
+
+  this.tile_events.on("tile.leave", function (info) {
+    self.solver.setObserved(self.tile_events.getInView());
+  });
+
+  this.tile_events.on("tile.update", function (info) {
+    self.solver.setObserved(self.tile_events.getInView());
+    /*setTimeout(function () {
+      self.solver.addAssertion({
+        variable: info.location.toString(),
+        state: info.state
+      });
+    }, 20);*/
+    setTimeout(function () {
+      var state = info.state ? "present"
+                             : "absent";
+      var id = info.location.toString();
+      //console.log("Observed %s: %s", id, state);
+      self.solver.addObservation(info.location.toString(), state);
+    }, 50);
+  });
+};
+
+PowerupTracker.prototype.getTiles = function() {
   var state = this.solver.getState();
-  var in_view = this.tile_events.getInView();
+  if (state === null && !this.empty) {
+    this.empty = true;
+    console.warn("Empty states.");
+    return null;
+  } else if (state === null && this.empty) {
+    return null;
+  } else if (state !== null && this.empty) {
+    console.log("States re-created.");
+    this.empty = false;
+  }
   var powerups = [];
+  // todo: variable spawn time.
+  var respawn = 60e3;
   for (var variable in state) {
+    var loc = Vec2.fromString(variable);
+    var powerup = state[variable];
+    // need x, y, content
+    var content;
+    if (powerup.state === "present") {
+      content = "!";
+    } else {
+      if (Array.isArray(powerup.time)) {
+        content = "?";
+      } else {
+        var respawn_time = powerup.time && powerup.time - Date.now();
+        if (respawn_time && respawn_time > 0) {
+          content = (respawn_time / 1e3).toFixed(1);
+        } else {
+          content = "?";
+        }
+      }
+    }
+    // if visible, then no content.
+    // variable for content or not setting?
     powerups.push({
-      id: variable,
-      location: Vec2.fromString(variable),
-      visible: this.tile_events.in_view.indexOf(variable) !== -1,
-      state: state[variable].state,
-      time: state[variable].time
+      x: loc.x * C.TILE_WIDTH + C.TILE_WIDTH / 2,
+      y: loc.y * C.TILE_WIDTH + C.TILE_WIDTH / 2,
+      content: content,
+      hideOverlay: powerup.state === "present"
     });
   }
   return powerups;
 };
 
+},{"./constants":8,"./solver":13,"./tile-events":16,"./vec2":18}],12:[function(require,module,exports){
+var C = require('./constants');
+var TileEvents = require('./tile-events');
+var Compare = require('./compare');
+var Vec2 = require('./vec2');
+
+var compare = new Compare(0.1);
+
+module.exports = SightTracker;
 /**
- * Check whether there are powerup tiles adjacent to the given tile.
- * @param {object} loc - Object with x and y properties corresponding
- *   to array location to look around.
- * @return {boolean} - Whether or not any adjacent tiles are powerups.
+ * opts type
+ * respawn
+ * map
+ * socket
+ * tile id
  */
-PowerupTracker.prototype.adjacentPowerup = function(loc) {
-  var offsets = [-1, 0, 1];
-  var x = loc.x;
-  var y = loc.y;
-  for (var i = 0; i < offsets.length; i++) {
-    for (var j = 0; j < offsets.length; j++) {
-      var thisX = x + offsets[i],
-          thisY = y + offsets[j];
-      if ((thisX < 0 || thisX > this.map.length - 1) ||
-        (thisY < 0 || thisY > this.map.length - 1) ||
-        (thisX === x && thisY === y)) {
-        continue;
-      } else if (Math.floor(this.map[thisX][thisY]) == 6) {
-        return true;
+// opts needs socket, map, tile type
+// assuming bombs for now
+function SightTracker(opts) {
+  // get list of the tiles to be tracked
+  var map = opts.map;
+  var socket = opts.socket;
+  var tile = opts.tile;
+  this.state = {};
+  this.respawn = C.RESPAWN[tile];
+  var self = this;
+
+  map.forEach(function (row, x) {
+    row.forEach(function (v, y) {
+      if (C.TILES[tile].id.indexOf(v) !== -1) {
+        self.state[new Vec2(x, y).toString()] = {
+          state: "present",
+          time: null
+        };
+      }
+    });
+  });
+
+  // TODO: general events, not bomb-specific.
+  this.events = new TileEvents({
+    tile: tile,
+    map: map,
+    socket: socket
+  });
+
+  this.events.on("tile.update", function (info) {
+    // on mapupdate, if tile is in view then consider it good.
+    var id = info.location.toString();
+    if (info.state) {
+      self.state[id].state = "present";
+      self.state[id].time = null;
+    } else {
+      var in_view = self.events.getInView();
+      if (in_view.indexOf(id) !== -1) {
+        // in view, just taken
+        self.state[id].state = "absent:known";
+        self.state[id].time = Date.now();
+      } else {
+        // not in view, who knows
+        self.state[id].state = "absent:unknown";
+        self.state[id].time = Date.now();
       }
     }
+  });
+
+  // Check if an entering tile is correct, even if a mapupdate wasn't sent for it.
+  this.events.on("tile.enter", function (info) {
+    var id = info.location.toString();
+    var last_state = self.state[id].state;
+    var this_state = info.state ? "present"
+                                : "absent";
+    var now = Date.now();
+    if (last_state === "present") {
+      if (this_state === "present") {
+        // tag: no change
+      } else if (this_state === "absent") {
+        // tag: weird
+        // desc: wouldn't it have sent a mapupdate?
+        console.warn("weird state");
+      }
+    } else if (last_state === "absent:known") {
+      if (this_state === "present") {
+        // tag: weird
+        // desc: wouldn't it have sent a mapupdate?
+      } else if (this_state === "absent") {
+        // check if it could have respawned and been used again.
+        if (compare.gt(now, self.state[id].time + self.respawn)) {
+          // could have respawned
+          self.state[id].state = "absent:unknown";
+          self.state[id].time = now;
+        } else {
+          // did not respawn (known)
+        }
+      }
+    } else if (last_state === "absent:unknown") {
+      if (this_state === "present") {
+        self.state[id].state = "present";
+        self.state[id].time = null;
+      } else if (this_state === "absent") {
+        // check if relatively greater than respawn time
+        if (compare.gt(now, self.state[id].time + self.respawn)) {
+          // could have respawned
+          self.state[id].state = "absent:unknown";
+          self.state[id].time = now;
+        } else {
+          // may not have respawned (unknown)
+        }
+      }
+    }
+  });
+}
+
+SightTracker.prototype.getTiles = function() {
+  var tiles = [];
+  for (var variable in this.state) {
+    var state = this.state[variable];
+    var loc = Vec2.fromString(variable);
+    var tile = {
+      x: loc.x * C.TILE_WIDTH + C.TILE_WIDTH / 2,
+      y: loc.y * C.TILE_WIDTH + C.TILE_WIDTH / 2,
+      content: "",
+      hideIndicator: true
+    };
+
+    if (state.state === "present") {
+      tile.hideOverlay = true;
+    } else {
+      var respawn_time = state.time + this.respawn - Date.now();
+      if (state.state === "absent:known") {
+        tile.content = (respawn_time / 1e3).toFixed(1);
+      } else if (state.state === "absent:unknown") {
+        tile.content = "< " + (respawn_time / 1e3).toFixed(1);
+      }
+    }
+    tiles.push(tile);
   }
-  return false;
+  return tiles;
 };
 
-},{"./solver":10,"./tile-events":12,"./vec2":13}],10:[function(require,module,exports){
-// Time for state to change back.
-var STATE_CHANGE = 6e4;
+},{"./compare":7,"./constants":8,"./tile-events":16,"./vec2":18}],13:[function(require,module,exports){
+var Compare = require('./compare');
+
 // Possible notification lag.
-var EPSILON = 2e3;
-
-// Comparison operations.
-function lt(a, b) {
-  return a - b < EPSILON;
-}
-
-function gt(a, b) {
-  return b - a < EPSILON;
-}
-
-function eq(a, b) {
-  return Math.abs(a - b) < EPSILON;
-}
+var compare = new Compare(2e3);
 
 // Object clone.
 function clone(obj) {
@@ -1645,42 +1700,70 @@ function clone(obj) {
 module.exports = Solver;
 
 /**
+ * ms timestamp, e.g. output of `Date.now()`
+ * @typedef {integer} timestamp
+ */
+/**
  * @typedef {object} Variable
  * @property {string} name - The name of the variable.
- * @property {boolean} state - The initial state of the variable.
+ * @property {string} [state="unknown"] - The initial state of the variable, one
+ *   of "present", "absent", or "unknown".
+ */
+/**
+ * @typedef {object} SolverOptions
+ * @property {integer} [interval=60e3] - Interval (in ms) after which a
+ *   variable changes state back to present.
+ * @property {timestamp} [time=Date.now()] - (test only) Current time
+ *   to use for the solver, nonzero.
+ * @property {boolean} [observedStart=false] - (test only) Whether the
+ *   states given with the variables should be used.
+ * @property {boolean} [debug=false] - Set debug options, toggles logging
+ *   and observation/notification storage.
  */
 /**
  * Solver solves boolean dynamic state. Must have known initial states, even
  * with unknown taken times.
- * @param {Array<Variable>} variables - array of variable names.
+ * @param {Array.<Variable>} variables - array of variable names.
  */
-function Solver(variables) {
+function Solver(variables, options) {
+  if (typeof options == "undefined") options = {};
+  
+  // Used for testing, nonzero.
+  this._time = options.time || 0;
+  // Allows interval of 0.
+  this._state_change_interval = options.hasOwnProperty("interval") ? options.interval
+                                                                   : 60e3;
+  this._debug = options.debug || false;
   this.variables = {};
   this.states = [];
-  this._time = null;
   var state = {};
-  var time = Date.now();
+  var time = this._time || Date.now();
   var self = this;
-  // TODO: Handle unknown or variable start.
+
   variables.forEach(function (variable) {
     var name = variable.name;
     self.variables[name] = {
       observed: false
     };
+    var variable_state = variable.state || "unknown";
+    var status = options.observedStart ? variable_state
+                                       : "unknown";
     state[name] = {
-      state: true,
-      intervals: [{
-        state: variable.state,
-        start: time,
-        observed: false,
-        end: null
-      }]
+      id: name,
+      state: status,
+      start: time,
+      end: null
     };
   });
   this.states.push(state);
 }
 
-// Set subset of variables as observed, the rest assumed not.
+/**
+ * Set some variables as observed. Any variables not provided are
+ * assume not observed.
+ * @param {Array.<string>} variables - the names of the variables
+ *   to set as observed.
+ */
 Solver.prototype.setObserved = function(variables) {
   var unobserved_variables = Object.keys(this.variables).filter(function (variable) {
     return variables.indexOf(variable) === -1;
@@ -1692,41 +1775,57 @@ Solver.prototype.setObserved = function(variables) {
   unobserved_variables.forEach(function (variable) {
     self.variables[variable].observed = false;
   });
+  this._log("Variables observed: %s", variables.length !== 0 ? variables.join("; ")
+                                                             : "none");
 };
 
-// Hypothesis has time, state.
-Solver.prototype.addHypothesis = function(h) {
+/**
+ * Inform solver that a variable changed.
+ * @param {timestamp} time - when the variable changed.
+ */
+Solver.prototype.addNotification = function(time) {
+  this._log("Notified: %d", time);
   this.updateVariables();
   var states = [];
   for (var i = 0; i < this.states.length; i++) {
-    var newStates = this.applyHypothesis(this.states[i], h);
+    var newStates = this.generateStates(this.states[i], time);
     if (newStates)
       Array.prototype.push.apply(states, newStates);
   }
   this.states = states;
 };
 
-// Returns multiple states or null if invalid
-Solver.prototype.applyHypothesis = function(state, hypothesis) {
-  hypothesis = clone(hypothesis);
+/**
+ * Generate possible successor states to a given state, given a
+ * notification that something changed.
+ * @private
+ * @param {VariableState} state - the state to generate successors for.
+ * @param {timestamp} time - when the change occurred.
+ * @return {Array.<VariableState>?} - returns array of successor states,
+ *   or null if no successor states were possible.
+ */
+Solver.prototype.generateStates = function(state, time) {
   var states = [];
   for (var name in state) {
-    // Skip observed variables, no guessing with them.
+    // Skip observed variables, they could not have been changed.
     if (this.variables[name].observed)
       continue;
     var newState = clone(state);
     var variable = newState[name];
-    // Hypothesis is always false.
-    if (variable.state) {
+
+    if (variable.state === "present") {
       // Change in observed variable true -> false
-      variable.state = hypothesis.state;
-      variable.intervals.push({
-        state: variable.state,
-        start: hypothesis.time,
-        end: hypothesis.time + STATE_CHANGE
-      });
-    } else {
+      variable.state = "absent";
+      variable.start = time;
+      variable.end = time + this._state_change_interval;
+    } else if (variable.state === "unknown") {
+      // Status of variable not known. Generate possibilities.
+      variable.state = "absent";
+      variable.start = time;
+      variable.end = time + this._state_change_interval;
+    } else if (variable.state === "absent") {
       newState = null;
+      // already taken?
     }
     if (newState !== null) {
       states.push(newState);
@@ -1739,9 +1838,28 @@ Solver.prototype.applyHypothesis = function(state, hypothesis) {
   }
 };
 
-// Observation has time, state, variable.
-Solver.prototype.addObservation = function(o) {
+/**
+ * An observation is a known state based on visible information.
+ * If the observation is current (the indicated change is something
+ * that just occurred), then time is required.
+ * @param {string} variable - the name of the variable to update.
+ * @param {boolean} state - the state to update the variable to.
+ * @param {timestamp} [time] - the time the state changed, if current.
+ * @throws {Error} If the given variable is not currently observed.
+ */
+Solver.prototype.addObservation = function(variable, state, time) {
   this.updateVariables();
+  if (!this.variables[variable].observed)
+    throw new Error("Variable must be observed to add observation.");
+  if (state !== "present" && state !== "absent")
+    throw new Error("Update must be either \"present\" or \"absent\".");
+  var o = {
+    variable: variable,
+    state: state
+  };
+  if (typeof time !== "undefined") o.time = time;
+  this._log("Observed v:%s s:%s t:%s", o.variable, o.state, o.time);
+  // Generate successor states based on observation.
   var states = [];
   for (var i = 0; i < this.states.length; i++) {
     var newState = this.applyObservation(this.states[i], o);
@@ -1751,144 +1869,288 @@ Solver.prototype.addObservation = function(o) {
   this.states = states;
 };
 
-// Return state with observation applied or null if invalid.
+// Given a variable state, return the variable state id.
+Solver.prototype.getStateId = function(state) {
+  var id = "";
+  if (state.state === "present") {
+    id += "present:";
+    id += this.variables[state.id].observed ? "observed"
+                                            : "unobserved";
+  } else if (state.state === "absent") {
+    id += "absent:";
+    id += state.end === null ? "unknown"
+                             : "known";
+  } else if (state.state === "unknown") {
+    id += "unknown";
+  }
+  return id;
+};
+
+function getObservationId(obs) {
+  var id = obs.state;
+  if (obs.hasOwnProperty("time")) {
+    id += ":time";
+  }
+  return id;
+}
+
+function getChangeTime(v) {
+  return v.end;
+}
+
+/**
+ * Return state with observation applied or null if invalid.
+ * @private
+ * @param {object} state
+ * @param {object} observation
+ */
 Solver.prototype.applyObservation = function(state, observation) {
-  var variable = state[observation.variable];
-  if (variable.state && !observation.state) {
-    // Change in observed variable true -> false
-    variable.state = observation.state;
-    variable.intervals.push({
-      state: variable.state,
-      start: observation.time,
-      end: observation.time + STATE_CHANGE
-    });
-    return state;
-  } else if (variable.state && observation.state) {
-    // Expected state.
-    return state;
-  } else if (!variable.state && observation.state) {
-    // Potentially updating variable.
-    var time = variable.intervals[variable.intervals.length - 1];
-    if (eq(time, observation.time)) {
-      // update state.
-      variable.state = observation.state;
-      variable.intervals.push({
-        state: observation.state,
-        start: observation.time,
-        end: null
-      });
-      return state;
+  var self = this;
+  function setPresent(v) {
+    v.state = "present";
+    v.start = Date.now();
+    v.end = null;
+  }
+  function setAbsent(v, time) {
+    if (typeof time == "undefined") time = null;
+    v.state = "absent";
+    if (time !== null) {
+      v.start = time;
+      v.end = time + self._state_change_interval;
     } else {
-      // Could not update this variable.
-      return null;
+      v.start = Date.now();
+      v.end = null;
     }
-  } else if (!variable.state && !observation.state) {
-    // Expected state.
+  }
+  var Actions = {
+    keep: "keep",
+    drop: "drop"
+  };
+  var current = state[observation.variable];
+  var stateId = this.getStateId(current);
+  var observationId = getObservationId(observation);
+  var action = null;
+
+  if (stateId == "unknown") {
+    if (observationId == "present") {
+      setPresent(current);
+      action = Actions.keep;
+    } else if (observationId == "present:time") {
+      // tag: weird
+      setPresent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent") {
+      setAbsent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      setAbsent(current, observation.time);
+      action = Actions.keep;
+    }
+  } else if (stateId == "absent:unknown") {
+    if (observationId == "present") {
+      setPresent(current);
+      action = Actions.keep;
+    } else if (observationId == "present:time") {
+      setPresent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent") {
+      // tag: no_change
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      // tag: weird
+      // desc: perfect grab might result in this
+      setAbsent(current, observation.time);
+      action = Actions.keep;
+    }
+  } else if (stateId == "absent:known") {
+    if (observationId == "present") {
+      if (compare.eq(getChangeTime(current), Date.now())) {
+        setPresent(current);
+        action = Actions.keep;
+      } else {
+        action = Actions.drop;
+      }
+    } else if (observationId == "present:time") {
+      if (compare.eq(getChangeTime(current), observation.time)) {
+        setPresent(current);
+        action = Actions.keep;
+      } else {
+        action = Actions.drop;
+      }
+    } else if (observationId == "absent") {
+      // tag: no_change
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      // tag:weird
+      // desc: perfect grab
+      if (compare.eq(getChangeTime(current), observation.time)) {
+        setAbsent(current, observation.time);
+        action = Actions.keep;
+      } else {
+        action = Actions.drop;
+      }
+    }
+  } else if (stateId == "present:observed") {
+    if (observationId == "present") {
+      // tag: no_change
+      action = Actions.keep;
+    } else if (observationId == "present:time") {
+      // tag: weird
+      action = Actions.keep;
+    } else if (observationId == "absent") {
+      // tag: weird
+      setAbsent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      setAbsent(current, observation.time);
+      action = Actions.keep;
+    }
+  } else if (stateId == "present:unobserved") {
+    if (observationId == "present") {
+      // tag: no_change
+      action = Actions.keep;
+    } else if (observationId == "present:time") {
+      // tag: weird
+      action = Actions.keep;
+    } else if (observationId == "absent") {
+      // tag: weird
+      setAbsent(current);
+      action = Actions.keep;
+    } else if (observationId == "absent:time") {
+      setAbsent(current, observation.time);
+      action = Actions.keep;
+    }
+  }
+
+  if (action == Actions.keep) {
     return state;
+  } else {
+    return null;
   }
 };
 
-// Get set of possible states.
+/**
+ * Get set of possible states.
+ * @private
+ * @return {Array.<State>} the current possible states
+ */
 Solver.prototype.getStates = function() {
   this.updateVariables();
   return this.states.slice();
 };
 
-// Like an observation except probably more powerful.
-Solver.prototype.addAssertion = function(o) {
-  this.updateVariables();
-  var self = this;
-  this.states = this.states.filter(function (state) {
-    return self.checkAssertion(state, o);
-  });
-};
-
-Solver.prototype.checkAssertion = function(state, assertion) {
-  var variable = state[assertion.variable];
-  return variable.state === assertion.state;
-};
-
-// Get consolidated state.
-// Each variable has state (true|false|null), change (if false). change
-// is number or array (if there is disagreement)
+/**
+ * Get consolidated state indicating known/unknown variable values.
+ * @return {OutState} - State with addtl values, each variable has
+ *   state (true|false|null), change (if false). change is number or
+ *   array (if there is disagreement).
+ */
 Solver.prototype.getState = function() {
   this.updateVariables();
-  // Construct output.
-  var out = {};
-  var state = this.states[0];
-  for (var name in state) {
-    var variable = state[name];
-    if (variable.state) {
-      out[name] = {
-        state: variable.state
-      };
-    } else {
-      var time = variable.intervals[variable.intervals.length - 1].end;
-      out[name] = {
-        state: variable.state,
-        time: time
-      };
-    }
-  }
-  // Compare results across all states.
-  return this.states.slice(1).reduce(function (out, state) {
-    for (var name in out) {
-      var out_variable = out[name],
-          variable = state[name];
-      // Check for matching states.
-      if (out_variable.state === variable.state) {
-        // Falsy check time.
-        if (!out_variable.state) {
-          // TODO: check undefined in case interval not updated?
-          var change = variable.intervals[variable.intervals.length - 1].end;
-          if (out_variable.time instanceof Array) {
-            if (out_variable.time.indexOf(change) === -1) {
-              out_variable.time.push(change);
-            }
-          } else if (out_variable.time !== change) {
-            var times = [out_variable.time, change];
-            out_variable.time = times;
-          } // Else matches, so no problem.
-        }
-      } else {
-        // Conflicted states.
-        out_variable.state = null;
-        // In case it was set.
-        delete out_variable.time;
-      }
-    }
-    return out;
-  }, out);
-};
-
-// Update `false` state variables based on false end
-// time, if present.
-Solver.prototype.updateVariables = function() {
-  var time = this._time || Date.now();
-  for (var i = 0; i < this.states.length; i++) {
-    var state = this.states[i];
+  if (this.states.length > 0) {
+    // Construct output.
+    var out = {};
+    var state = this.states[0];
     for (var name in state) {
       var variable = state[name];
-      // Update changeback.
-      if (!variable.state) {
-        if (variable.intervals.length > 0) {
-          var last = variable.intervals[variable.intervals.length - 1];
-          if (last.end && last.end <= time) {
-            // update to true.
-            variable.state = true;
-            variable.intervals.push({
-              state: true,
-              start: time,
-              end: null
-            });
-          }
-        }
+      if (variable.state === "present") {
+        out[name] = {
+          state: variable.state
+        };
+      } else {
+        // intervals, end time
+        var time = variable.end;
+        out[name] = {
+          state: variable.state,
+          time: time
+        };
       }
     }
+    // Compare results across all states.
+    return this.states.slice(1).reduce(function (out, state) {
+      for (var name in out) {
+        var out_variable = out[name],
+            variable = state[name];
+        // Check for matching states.
+        if (out_variable.state === variable.state) {
+          // Falsy check time.
+          if (out_variable.state === "absent") {
+            // TODO: check undefined in case interval not updated?
+            // Get end of most recent applicable interval.
+            // intervals: end_time
+            var change = variable.end;
+            if (out_variable.time instanceof Array) {
+              if (out_variable.time.indexOf(change) === -1) {
+                out_variable.time.push(change);
+              }
+            } else if (out_variable.time !== change) {
+              var times = [out_variable.time, change];
+              out_variable.time = times;
+            } // Else matches, so no problem.
+          }
+        } else {
+          // Conflicted states.
+          out_variable.state = "unknown";
+          // In case it was set.
+          delete out_variable.time;
+        }
+      }
+      return out;
+    }, out);
+  } else {
+    return null;
   }
 };
 
-},{}],11:[function(require,module,exports){
+/**
+ * Update `false` state variables based on false end time, if present.
+ * @private
+ */
+Solver.prototype.updateVariables = function() {
+  var states = [];
+  var time = this._time || Date.now();
+  for (var i = 0; i < this.states.length; i++) {
+    var state = clone(this.states[i]);
+    for (var name in state) {
+      var variable = state[name];
+
+      // Update changeback.
+      if (variable.state === "absent") {
+        if (variable.end && variable.end <= time) {
+          // update to true.
+          variable.state = "present";
+          variable.start = time;
+          variable.end = null;
+        } else if (variable.end === null) {
+          // Near beginning of experiment, unknown variable that does not have
+          // a known end time. Create a new state with a different variable that is present
+          // for naive approach.
+        }
+      } else if (variable.state === "unknown") {
+        var end = variable.start + this._state_change_interval;
+        if (end <= time) {
+          variable.state = "present";
+          variable.start = time;
+          variable.end = null;
+        }
+      }
+    }
+    states.push(state);
+  }
+  this.states = states;
+};
+
+/**
+ * Same interface as `console.log`.
+ * @private
+ */
+Solver.prototype._log = function() {
+  if (this._debug) {
+    console.log.apply(console, Array.prototype.slice.call(arguments));
+  }
+};
+
+},{"./compare":7}],14:[function(require,module,exports){
 var EventEmitter = require('events').EventEmitter;
 var util = require('util');
 
@@ -1896,7 +2158,7 @@ var util = require('util');
  * Makes checking states easier. If module is not loaded synchronously you may miss out on states.
  * Events:
  * * tagpro.exists: tagpro object exists, synchronous with tagpro
- *     variable creation.
+ *     variable creation if script loaded early enough.
  * * tagpro.beforeready: assets loaded, set before any other tagpro ready.
  * * same as tagpro.ready in external script with guard against tagpro not
  *     existing.
@@ -1937,7 +2199,7 @@ var TagPro = (function (window) {
         try {
           callback(v);
         } catch (e) {
-          console.error("Error trying to invoke callback for %s.", property);
+          console.error("Error trying to invoke callback for %s: %o", property, e);
         }
       }
     });
@@ -1975,6 +2237,8 @@ var TagPro = (function (window) {
       tagpro: null, // "exists", "ready", "initialized"
       socket: null // SocketIO socket.
     };
+    // Allow calling synchronous event handlers async.
+    this.sync_events = [];
 
     var self = this;
     onTagPro(function () {
@@ -2052,7 +2316,6 @@ var TagPro = (function (window) {
     // Update state.
     this.state[type] = val;
 
-    //console.log("Emitting: %s", type);
     // Emit to specific listeners.
     this.emit(type + "." + val, this.state);
     // Emit to general type listeners.
@@ -2066,51 +2329,89 @@ var TagPro = (function (window) {
   };
 
   return new TagPro();
-})(unsafeWindow || window); // For use in userscripts.
+})((typeof unsafeWindow !== "undefined" && unsafeWindow) || window); // For use in userscripts.
 
 module.exports = TagPro;
 
-},{"events":1,"util":5}],12:[function(require,module,exports){
+},{"events":1,"util":5}],15:[function(require,module,exports){
 var Vec2 = require('./vec2');
+var C = require('./constants');
+
+function dim(arr, i) {
+  if (i === 0) {
+    return arr.length;
+  } else if (i === 1) {
+    return arr[0].length;
+  }
+}
+
+module.exports = T;
+function T(map) {
+  var points = [];
+  points.push({
+    x: 0, y: 0
+  });
+  points.push({
+    x: map.length * C.TILE_WIDTH, y: 0
+  });
+  points.push({
+    x: map.length * C.TILE_WIDTH, y: map[0].length * C.TILE_WIDTH
+  });
+  points.push({
+    x: 0, y: map[0].length * C.TILE_WIDTH
+  });
+  this.points = points.map(function (o) {
+    o.indicator = true;
+    o.content = ":)";
+    o.x += C.TILE_WIDTH / 2;
+    o.y += C.TILE_WIDTH / 2;
+    return o;
+  });
+}
+
+T.prototype.getTiles = function(first_argument) {
+  return this.points;
+};
+
+},{"./constants":8,"./vec2":18}],16:[function(require,module,exports){
+var Vec2 = require('./vec2');
+var C = require('./constants');
+
 var EventEmitter = require('events').EventEmitter;
 var util = require('util');
 
-var TILE_WIDTH = 40;
+var tileTypes = C.TILES;
 
-var tileIds = [5, 6, 10, 14, 15];
-var tileStrings = {
-  5: "boost",
-  6: "powerup",
-  10: "bomb",
-  14: "boost",
-  15: "boost"
-};
-
-var tileTypes = {
-  powerup: {
-    active: [6.1, 6.2, 6.3, 6.4],
-    inactive: [6],
-    id: [6]
-  },
-  bomb: {
-    active: [10],
-    inactive: [10.1],
-    id: [10]
-  },
-  boost: {
-    active: [5, 14, 15],
-    inactive: [5.1, 14.1, 15.1],
-    id: [5, 14, 15]
-  }
-};
-
-// Tile events can take a specific tile or a tile type, probably.
-// Allows adding listener for tiles coming into view.
-// Browser-specific.
-// events put out are like n.enter, n.leave, n.update where n is floor of tile id you're interested in
-// callback gets tile vec with x, y, and boolean for active
-// default listens for boost, bomb, powerup.
-// opts has keys socket, map, tile.
+/**
+ * @typedef {object} TileEventsOptions
+ * @property {string} tile - one of "powerup", "bomb", or "boost"
+ *   indicating the type of tile to track.
+ * @property {TagProMap} map - the TagPro map
+ * @property {Socket} socket - the socket.io socket for the game.
+ */
+/**
+ * Contains information about a tile event, whether the tile is
+ * present or absent, and its location.
+ * @typedef {object} TileEventInfo
+ * @property {boolean} state - true for present, false for absent
+ * @property {Vec2} location - the x, y location in the map for the
+ *   tile in question.
+ */
+/**
+ * @callback TileEventCallback
+ * @param {TileEventInfo} info - the information about the tile.
+ */
+/**
+ * Generate abstracted tile events for specific tile types, specified
+ * in options.
+ *
+ * Event listeners are managed through event emitter interface, `on`,
+ * `off`, etc. Events that can be listened to include:
+ * * tile.update - a tile within view has been updated
+ * * tile.enter - a tile has come into view
+ * * tile.leave - a tile has left view
+ * Events are passed object of type TileEventInfo with event information.
+ */
 function TileEvents(opts) {
   EventEmitter.apply(this, arguments);
   var tile = opts.tile;
@@ -2157,15 +2458,21 @@ function TileEvents(opts) {
 util.inherits(TileEvents, EventEmitter);
 module.exports = TileEvents;
 
+/**
+ * Get array of string ids for tiles in view.
+ * @return {Array.<string>} - the tiles in view.
+ */
 TileEvents.prototype.getInView = function() {
   return this.in_view.slice();
 };
 
+// Check if given tile id corresponds to tile type to be tracked.
 // @private
 TileEvents.prototype.isType = function(v) {
   return this.tile.id.indexOf(Math.floor(v)) !== -1;
 };
 
+// Check whether given tile id indicates tile is "active".
 // @private
 TileEvents.prototype.isActive = function(v) {
   return this.tile.active.indexOf(v) !== -1;
@@ -2188,7 +2495,7 @@ TileEvents.prototype._interval = function() {
   var time = Date.now();
 
   this.tiles.forEach(function (tile) {
-    var diff = tile.mulc(TILE_WIDTH, true).sub(location).abs();
+    var diff = tile.c().mulc(C.TILE_WIDTH).sub(location).abs();
     var in_view = (diff.x < this.range.x && diff.y < this.range.y);
     var id = tile.toString();
     var already_in_view = self.in_view.indexOf(id) !== -1;
@@ -2219,7 +2526,301 @@ TileEvents.prototype._interval = function() {
   });
 };
 
-},{"./vec2":13,"events":1,"util":5}],13:[function(require,module,exports){
+},{"./constants":8,"./vec2":18,"events":1,"util":5}],17:[function(require,module,exports){
+var Vec2 = require('./vec2');
+var Line = require('./line');
+var C = require('./constants');
+
+module.exports = TileOverlay;
+
+/**
+ * [TileOverlay description]
+ * @param {[type]} options [description]
+ */
+function TileOverlay(options) {
+  if (typeof options == "undefined") options = {};
+  // Distance from edge of screen where indicator-relevant tile overlays
+  // disappear.
+  this.x_visible = 40;
+  this.y_visible = this.x_visible;
+  this.x_visible_no_indicator = 0;
+  this.y_visible_no_indicator = this.x_visible_no_indicator;
+  this.x_indicator_offset = 50;
+  this.y_indicator_offset = this.x_indicator_offset;
+
+  this.sources = [];
+
+  // Set up indicator container.
+  this.indicator_ui = new PIXI.DisplayObjectContainer();
+  tagpro.renderer.layers.ui.addChild(this.indicator_ui);
+  this.indicators = {};
+
+  // Set up tile overlay containers.
+  this.tile_ui = new PIXI.DisplayObjectContainer();
+  tagpro.renderer.layers.foreground.addChild(this.tile_ui);
+  this.tile_overlays = {};
+
+  $(window).resize(this._onResize.bind(this));
+  this._onResize();
+}
+
+/**
+ * Add a source of tile information.
+ * @param {TileSource} source
+ */
+TileOverlay.prototype.addSource = function(source) {
+  if (this.sources.indexOf(source) !== -1) {
+    throw Error("Source already added.");
+  } else {
+    this.sources.push(source);
+    var sourceId = this.sources.length - 1;
+
+    var tiles = source.getTiles();
+    var texture = this._makeIndicatorTexture();
+    var self = this;
+    tiles.forEach(function (tile) {
+      var id = Vec2.toString(tile);
+      var sprite = new PIXI.Sprite(texture);
+      sprite.anchor = new PIXI.Point(0.5, 0.5);
+      self.indicator_ui.addChild(sprite);
+      var t = makeText();
+      self.indicator_ui.addChild(t);
+      sprite.visible = false;
+      t.visible = false;
+      self.indicators[sourceId + ":" + id] = {
+        sprite: sprite,
+        text: t
+      };
+    });
+
+    tiles.forEach(function (tile) {
+      var id = Vec2.toString(tile);
+      var t = makeText();
+      self.tile_ui.addChild(t);
+      self.tile_overlays[sourceId + ":" + id] = {
+        text: t
+      };
+    });
+  }
+};
+
+TileOverlay.prototype.update = function() {
+  var offscreen_tiles = [];
+  var visible_tiles = [];
+  var all_bounds = this._getBounds();
+
+  var self = this;
+  this.sources.forEach(function (source, sourceId) {
+    var tiles = source.getTiles();
+
+    if (!tiles) {
+      return;
+    }
+    for (var i = 0; i < tiles.length; i++) {
+      var tile = tiles[i];
+      tile.id = sourceId + ":" + Vec2.toString(tile);
+      var bounds = tile.hideIndicator ? all_bounds.overlay_only
+                                      : all_bounds.with_indicator;
+      if (self._inBounds(bounds, tile)) {
+        visible_tiles.push(tile);
+      } else {
+        offscreen_tiles.push(tile);
+      }
+    }
+  });
+
+  // Remove indicators for visible tiles.
+  visible_tiles.forEach(function (tile) {
+    var indicator = self.indicators[tile.id];
+    indicator.text.visible = false;
+    indicator.sprite.visible = false;
+  });
+
+  // Hide overlays for non-visible tiles.
+  offscreen_tiles.forEach(function (tile) {
+    var overlay = self.tile_overlays[tile.id];
+    overlay.text.visible = false;
+  });
+
+  // Do drawings.
+  this._drawOverlays(visible_tiles);
+  this._drawIndicators(offscreen_tiles);
+};
+
+TileOverlay.prototype._drawOverlays = function(tiles) {
+  for (var i = 0; i < tiles.length; i++) {
+    var tile = tiles[i];
+    var text = this.tile_overlays[tile.id].text;
+    if (tile.hideOverlay) {
+      text.visible = false;
+      continue;
+    } else {
+      var loc = new Vec2(tile.x, tile.y);
+      text.visible = true;
+      text.x = loc.x;
+      text.y = loc.y;
+      text.setText(tile.content);
+    }
+  }
+};
+
+TileOverlay.prototype._drawIndicators = function(tiles) {
+  var viewport = $("#viewport");
+  // Center screen coordinates.
+  var center = new Vec2(viewport.width(), viewport.height()).divc(2);
+
+  for (var i = 0; i < tiles.length; i++) {
+    var tile = tiles[i];
+    var indicator = this.indicators[tile.id];
+    if (tile.hideIndicator) {
+      indicator.sprite.visible = false;
+      indicator.text.visible = false;
+    } else {
+      var draw = false;
+      var loc = this._worldToScreen(new Vec2(tile.x, tile.y));
+
+      // Line from center to tile.
+      var line = new Line(center, loc);
+      for (var j = 0; j < this.indicator_lines.length; j++) {
+        var indicator_line = this.indicator_lines[j];
+        var intersection = indicator_line.intersection(line);
+        if (intersection) {
+          draw = true;
+          indicator.sprite.x = intersection.x;
+          indicator.sprite.y = intersection.y;
+          indicator.sprite.rotation = loc.sub(center).angle();
+          indicator.text.x = intersection.x;
+          indicator.text.y = intersection.y;
+          indicator.text.setText(tile.content);
+          break;
+        }
+      }
+      if (!draw) {
+        console.warn("Error finding overlay position for powerup indicator.");
+      } else {
+        indicator.sprite.visible = true;
+        indicator.text.visible = true;
+      }
+    }
+  }
+};
+
+/**
+ * Convert screen coordinate to world coordinate. Alters given vector.
+ * @param {Vec2} v
+ * @return {Vec2} - the altered v
+ */
+TileOverlay.prototype._screenToWorld = function(v) {
+  var gameContainer = tagpro.renderer.gameContainer;
+  var scale = gameContainer.scale.x;
+  var gameLocation = new Vec2(gameContainer.x, gameContainer.y).divc(-scale);
+  return v.divc(scale).add(gameLocation);
+};
+
+/**
+ * Convert world coordinates to screen. Alters given vector.
+ * @param {Vec2} v
+ * @return {Vec2} - the altered v
+ */
+TileOverlay.prototype._worldToScreen = function(v) {
+  var gameContainer = tagpro.renderer.gameContainer;
+  var scale = gameContainer.scale.x;
+  var gameLocation = new Vec2(gameContainer.x, gameContainer.y).divc(-scale);
+  return v.sub(gameLocation).mulc(scale);
+};
+
+/**
+ * Return bounds object for world-coordinate objects.
+ * @return {[type]} [description]
+ */
+TileOverlay.prototype._getBounds = function() {
+  // Indicator-relevant bounds:
+  var $viewport = $("#viewport");
+  return {
+    with_indicator: [
+      this._screenToWorld(new Vec2(0, 0). addc(this.x_visible)),
+      this._screenToWorld(
+        new Vec2($viewport.width(), $viewport.height()).subc(this.x_visible))
+    ],
+    overlay_only: [
+      this._screenToWorld(new Vec2(0, 0)).subc(C.TILE_WIDTH),
+      this._screenToWorld(new Vec2($viewport.width(), $viewport.height())).addc(C.TILE_WIDTH)
+    ]
+  };
+};
+
+TileOverlay.prototype._inBounds = function(bounds, p) {
+  return (bounds[0].x < p.x && bounds[1].x > p.x && bounds[0].y < p.y && bounds[1].y > p.y);
+};
+
+TileOverlay.prototype._makeIndicatorTexture = function(first_argument) {
+  var g = new PIXI.Graphics();
+  g.clear();
+  g.lineStyle(1, 0xffffff, 0.9);
+  var indicator_size = 18;
+  var container_size = indicator_size * 2 + 10 * 2;
+  // Circle.
+  g.beginFill(0xFFFFFF, 0.9);
+  g.drawCircle(container_size / 2, container_size / 2, indicator_size);
+  // Pointer.
+  var triangle_size = 6;
+  var pointer_base = container_size / 2 + indicator_size;
+  g.drawShape(new PIXI.Polygon([
+    pointer_base, container_size / 2 - triangle_size / 2,
+    pointer_base + triangle_size, container_size / 2,
+    pointer_base, container_size / 2 + triangle_size / 2,
+    pointer_base, container_size / 2 - triangle_size / 2,
+  ]));
+  g.endFill();
+  // Invisible line so generated texture is centered on circle.
+  g.lineStyle(0, 0, 0);
+  g.moveTo(10, container_size / 2);
+  g.lineTo(10 - triangle_size, container_size / 2);
+  return g.generateTexture();
+};
+
+TileOverlay.prototype._onResize = function() {
+  console.log("Overlay resize callback called.");
+  var $viewport = $("#viewport");
+  var indicator_offset = this.x_indicator_offset;
+  this.indicator_lines = [];
+  // Top.
+  this.indicator_lines.push(new Line([
+    indicator_offset, indicator_offset,
+    $viewport.width() - indicator_offset, indicator_offset
+  ]));
+  // Right.
+  this.indicator_lines.push(new Line([
+    $viewport.width() - indicator_offset, indicator_offset,
+    $viewport.width() - indicator_offset, $viewport.height() - indicator_offset
+  ]));
+  // Bottom.
+  this.indicator_lines.push(new Line([
+    $viewport.width() - indicator_offset, $viewport.height() - indicator_offset,
+    indicator_offset, $viewport.height() - indicator_offset
+  ]));
+  // Left.
+  this.indicator_lines.push(new Line([
+    indicator_offset, $viewport.height() - indicator_offset,
+    indicator_offset, indicator_offset
+  ]));
+};
+
+function makeText(color) {
+  if (typeof color == 'undefined') color = "#FFFFFF";
+  var text = new PIXI.Text("", {
+    font: "bold 10pt Arial",
+    fill: color,
+    stroke: "#000000",
+    strokeThickness: 3,
+    align: "center"
+  });
+  text.anchor = new PIXI.Point(0.5, 0.5);
+  text.visible = false;
+  return text;
+}
+
+},{"./constants":8,"./line":9,"./vec2":18}],18:[function(require,module,exports){
 function Vec2(x, y) {
     this.x = x;
     this.y = y;
@@ -2231,89 +2832,58 @@ Vec2.toString = function(v) {
     return "(" + v.x + "," + v.y + ")";
 };
 
+// TODO: Exception handling, format validation.
 Vec2.fromString = function(s) {
     var coords = s.slice(1, -1).split(',').map(Number);
     return new Vec2(coords[0], coords[1]);
 };
 
-Vec2.prototype.add = function(v, returnNew) {
-    if (returnNew) {
-        return new Vec2(this.x + v.x, this.y + v.y);
-    } else {
-        this.x += v.x;
-        this.y += v.y;
-        return this;
-    }
+Vec2.prototype.add = function(v) {
+    this.x += v.x;
+    this.y += v.y;
+    return this;
 };
 
-Vec2.prototype.addc = function(c, returnNew) {
-    if (returnNew) {
-        return new Vec2(this.x + c, this.y + c);
-    } else {
-        this.x += c;
-        this.y += c;
-        return this;
-    }
+Vec2.prototype.addc = function(c) {
+    this.x += c;
+    this.y += c;
+    return this;
 };
 
-Vec2.prototype.sub = function(v, returnNew) {
-    if (returnNew) {
-        return new Vec2(this.x - v.x, this.y - v.y);
-    } else {
-        this.x -= v.x;
-        this.y -= v.y;
-        return this;
-    }
+Vec2.prototype.sub = function(v) {
+    this.x -= v.x;
+    this.y -= v.y;
+    return this;
 };
 
-Vec2.prototype.subc = function(c, returnNew) {
-    if (returnNew) {
-        return new Vec2(this.x - c, this.y - c);
-    } else {
-        this.x -= c;
-        this.y -= c;
-        return this;
-    }
+Vec2.prototype.subc = function(c) {
+    this.x -= c;
+    this.y -= c;
+    return this;
 };
 
-Vec2.prototype.mul = function(v, returnNew) {
-    if (returnNew) {
-        return new Vec2(this.x * v.x, this.y * v.y);
-    } else {
-        this.x *= v.x;
-        this.y *= v.y;
-        return this;
-    }
+Vec2.prototype.mul = function(v) {
+    this.x *= v.x;
+    this.y *= v.y;
+    return this;
 };
 
-Vec2.prototype.mulc = function(c, returnNew) {
-    if (returnNew) {
-        return new Vec2(this.x * c, this.y * c);
-    } else {
-        this.x *= c;
-        this.y *= c;
-        return this;
-    }
+Vec2.prototype.mulc = function(c) {
+    this.x *= c;
+    this.y *= c;
+    return this;
 };
 
-Vec2.prototype.div = function(v, returnNew) {
-    if (returnNew) {
-        return new Vec2(this.x / v.x, this.y / v.y);
-    } else {
-        this.x /= v.x;
-        this.y /= v.y;
-        return this;
-    }
+Vec2.prototype.div = function(v) {
+    this.x /= v.x;
+    this.y /= v.y;
+    return this;
 };
 
-Vec2.prototype.divc = function(c, returnNew) {
-    if (returnNew) {
-        return new Vec2(this.x / c, this.y / c);
-    } else {
-        this.x /= c;
-        this.y /= c;
-        return this;
-    }
+Vec2.prototype.divc = function(c) {
+    this.x /= c;
+    this.y /= c;
+    return this;
 };
 
 Vec2.prototype.dot = function(v) {
@@ -2332,14 +2902,10 @@ Vec2.prototype.angle = function() {
     return Math.atan2(this.y, this.x);
 };
 
-Vec2.prototype.norm = function(returnNew) {
+Vec2.prototype.norm = function() {
     var len = Math.sqrt(Math.pow(this.x, 2) + Math.pow(this.y, 2));
-    if (returnNew) {
-        return new Vec2(this.x / len, this.y / len);
-    } else {
-        this.x /= len;
-        this.y /= len;
-    }
+    this.x /= len;
+    this.y /= len;
 };
 
 Vec2.prototype.lt = function(v) {
@@ -2370,14 +2936,15 @@ Vec2.prototype.clone = function() {
     return new Vec2(this.x, this.y);
 };
 
-Vec2.prototype.abs = function(returnNew) {
-    if (returnNew) {
-        return new Vec2(Math.abs(this.x), Math.abs(this.y));
-    } else {
-        this.x = Math.abs(this.x);
-        this.y = Math.abs(this.y);
-        return this;
-    }
+/**
+ * Alias for #clone
+ */
+Vec2.prototype.c = Vec2.prototype.clone;
+
+Vec2.prototype.abs = function() {
+    this.x = Math.abs(this.x);
+    this.y = Math.abs(this.y);
+    return this;
 };
 
 Vec2.prototype.max = function(c) {
@@ -2392,4 +2959,4 @@ Vec2.prototype.toString = function() {
   return "(" + this.x + "," + this.y + ")";
 };
 
-},{}]},{},[7]);
+},{}]},{},[10]);
