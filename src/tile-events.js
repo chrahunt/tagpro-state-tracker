@@ -1,43 +1,41 @@
 var Vec2 = require('./vec2');
+var C = require('./constants');
+
 var EventEmitter = require('events').EventEmitter;
 var util = require('util');
 
-var TILE_WIDTH = 40;
+var tileTypes = C.TILES;
 
-var tileIds = [5, 6, 10, 14, 15];
-var tileStrings = {
-  5: "boost",
-  6: "powerup",
-  10: "bomb",
-  14: "boost",
-  15: "boost"
-};
-
-var tileTypes = {
-  powerup: {
-    active: [6.1, 6.2, 6.3, 6.4],
-    inactive: [6],
-    id: [6]
-  },
-  bomb: {
-    active: [10],
-    inactive: [10.1],
-    id: [10]
-  },
-  boost: {
-    active: [5, 14, 15],
-    inactive: [5.1, 14.1, 15.1],
-    id: [5, 14, 15]
-  }
-};
-
-// Tile events can take a specific tile or a tile type, probably.
-// Allows adding listener for tiles coming into view.
-// Browser-specific.
-// events put out are like n.enter, n.leave, n.update where n is floor of tile id you're interested in
-// callback gets tile vec with x, y, and boolean for active
-// default listens for boost, bomb, powerup.
-// opts has keys socket, map, tile.
+/**
+ * @typedef {object} TileEventsOptions
+ * @property {string} tile - one of "powerup", "bomb", or "boost"
+ *   indicating the type of tile to track.
+ * @property {TagProMap} map - the TagPro map
+ * @property {Socket} socket - the socket.io socket for the game.
+ */
+/**
+ * Contains information about a tile event, whether the tile is
+ * present or absent, and its location.
+ * @typedef {object} TileEventInfo
+ * @property {boolean} state - true for present, false for absent
+ * @property {Vec2} location - the x, y location in the map for the
+ *   tile in question.
+ */
+/**
+ * @callback TileEventCallback
+ * @param {TileEventInfo} info - the information about the tile.
+ */
+/**
+ * Generate abstracted tile events for specific tile types, specified
+ * in options.
+ *
+ * Event listeners are managed through event emitter interface, `on`,
+ * `off`, etc. Events that can be listened to include:
+ * * tile.update - a tile within view has been updated
+ * * tile.enter - a tile has come into view
+ * * tile.leave - a tile has left view
+ * Events are passed object of type TileEventInfo with event information.
+ */
 function TileEvents(opts) {
   EventEmitter.apply(this, arguments);
   var tile = opts.tile;
@@ -84,15 +82,21 @@ function TileEvents(opts) {
 util.inherits(TileEvents, EventEmitter);
 module.exports = TileEvents;
 
+/**
+ * Get array of string ids for tiles in view.
+ * @return {Array.<string>} - the tiles in view.
+ */
 TileEvents.prototype.getInView = function() {
   return this.in_view.slice();
 };
 
+// Check if given tile id corresponds to tile type to be tracked.
 // @private
 TileEvents.prototype.isType = function(v) {
   return this.tile.id.indexOf(Math.floor(v)) !== -1;
 };
 
+// Check whether given tile id indicates tile is "active".
 // @private
 TileEvents.prototype.isActive = function(v) {
   return this.tile.active.indexOf(v) !== -1;
@@ -115,7 +119,7 @@ TileEvents.prototype._interval = function() {
   var time = Date.now();
 
   this.tiles.forEach(function (tile) {
-    var diff = tile.mulc(TILE_WIDTH, true).sub(location).abs();
+    var diff = tile.c().mulc(C.TILE_WIDTH).sub(location).abs();
     var in_view = (diff.x < this.range.x && diff.y < this.range.y);
     var id = tile.toString();
     var already_in_view = self.in_view.indexOf(id) !== -1;

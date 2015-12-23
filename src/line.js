@@ -5,9 +5,9 @@ var Point = require("./vec2");
  * polygons. Can be called 2 ways.
  * @constructor
  * @example <caption>Constructing from Point objects.</caption>
- *   var e = new Edge(p1, p2)
+ *   var e = new Line(p1, p2)
  * @example <caption>From an array of values.</caption>
- *   var e = new Edge([x1, y1, x2, y2])
+ *   var e = new Line([x1, y1, x2, y2])
  */
 function Line(p1, p2) {
   if (Array.isArray(p1)) {
@@ -22,6 +22,9 @@ function Line(p1, p2) {
 
 module.exports = Line;
 
+/**
+ * @private
+ */
 Line.prototype._CCW = function(p1, p2, p3) {
   a = p1.x; b = p1.y;
   c = p2.x; d = p2.y;
@@ -50,10 +53,10 @@ Line.prototype.intersects = function(line) {
  *   do not intersect or if colinear.
  */
 Line.prototype.intersection = function(line) {
-  var p = this.p1.clone(),
-      r = this.p2.sub(this.p1, true),
-      q = line.p1.clone(),
-      s = line.p2.sub(line.p1, true);
+  var p = this.p1.c(),
+      r = this.p2.c().sub(this.p1),
+      q = line.p1.c(),
+      s = line.p2.c().sub(line.p1);
   var denominator = r.cross(s);
   if (denominator !== 0) {
     q.sub(p);
@@ -78,7 +81,7 @@ Line.prototype.intersection = function(line) {
  */
 Line.prototype.translate = function(v, returnNew) {
   if (returnNew) {
-    return new Line(this.p1.add(v, true), this.p2.add(v, true));
+    return new Line(this.p1.c().add(v), this.p2.c().add(v));
   } else {
     this.p1.add(v);
     this.p2.add(v);
@@ -91,16 +94,12 @@ Line.prototype.translate = function(v, returnNew) {
  * @param {number} c - Value to scale edge points by.
  * @return {Line} - The scaled edge.
  */
-Line.prototype.scale = function(c, returnNew) {
-  if (returnNew) {
-    return new Line(this.p1.mulc(c, true), this.p2.mulc(c, true));
-  } else {
-    this.p1.mulc(c);
-    this.p2.mulc(c);
-    return this;
-  }
+Line.prototype.scale = function(c) {
+  this.p1.mulc(c);
+  this.p2.mulc(c);
+  return this;
 };
 
 Line.prototype.clone = function() {
-  return new Line(this.p1.clone(), this.p2.clone());
+  return new Line(this.p1.c(), this.p2.c());
 };
